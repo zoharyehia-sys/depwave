@@ -26,6 +26,6 @@ fixtures/<name>/
 
 ## How they're used
 
-- **Phase 0:** `test/fixtures.test.ts` validates the goldens themselves.
-- **Phase 1+:** the golden test copies `repo/` to a temp dir, `git init` + commit, applies each scenario as a second commit,
-  runs `depwave impact --base HEAD~1`, and compares the impacted test set (file level first, symbol level from Phase 2).
+- `test/fixtures.test.ts` validates the goldens themselves.
+- `test/golden.test.ts` copies `repo/` into a temp git repo, commits, applies each scenario as a second commit, runs the real
+  pipeline, and asserts the exact `expected.file` test set. All scenarios pass. `expected.symbol` is checked from Phase 2.

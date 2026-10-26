@@ -1,7 +1,10 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { createCli, VERSION } from './cli.js';
-import { EXIT_NOT_IMPLEMENTED } from './commands/ImpactCommand.js';
+import { EXIT_FAILURE } from './commands/ImpactCommand.js';
 
 async function run(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   const stdout = new PassThrough();
@@ -27,10 +30,16 @@ describe('depwave CLI', () => {
     expect(stdout).toContain('depwave impact');
   });
 
-  it('reports `impact` as not implemented with a dedicated exit code', async () => {
-    const { code, stderr } = await run(['impact', '--base', 'main']);
-    expect(code).toBe(EXIT_NOT_IMPLEMENTED);
-    expect(stderr).toMatch(/not implemented yet \(planned for Phase 1\)/);
+  it('fails with one readable line (no stack trace) outside a git repository', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'depwave-not-a-repo-'));
+    try {
+      const { code, stderr } = await run(['impact', '--cwd', dir]);
+      expect(code).toBe(EXIT_FAILURE);
+      expect(stderr).toMatch(/^depwave: git rev-parse --show-toplevel failed .*not a git repository/i);
+      expect(stderr.trim().split('\n')).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('rejects unknown output formats', async () => {

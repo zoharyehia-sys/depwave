@@ -1,4 +1,5 @@
 export * from './errors.js';
+export * from './paths.js';
 
 export * from './model/changes.js';
 export * from './model/facts.js';
@@ -15,3 +16,9 @@ export * from './ports/parser.js';
 export * from './ports/reporter.js';
 export * from './ports/resolver.js';
 export * from './ports/workspace.js';
+
+export * from './graph/DependencyGraph.js';
+export * from './build/GraphBuilder.js';
+export * from './diff/DiffAnalyzer.js';
+export * from './impact/ImpactPredictor.js';
+export * from './impact/TestSelector.js';

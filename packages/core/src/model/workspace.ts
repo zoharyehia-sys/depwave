@@ -33,4 +33,6 @@ export interface Inventory {
   workspace: Workspace;
   /** Source files only, sorted by path. */
   files: SourceFile[];
+  /** Every tracked path (sources, assets, configs): what dynamic-import globs and the resolver match against. */
+  paths: string[];
 }

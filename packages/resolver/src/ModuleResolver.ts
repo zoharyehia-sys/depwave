@@ -6,7 +6,6 @@ import {
   type ResolutionResult,
   type ResolverPort,
   type Revision,
-  type TrackedFile,
   type UnresolvedReason,
   type Workspace,
   type WorkspacePackage,
@@ -81,8 +80,8 @@ export class ModuleResolver implements ResolverPort {
   }
 
   /** Builds the virtual file system for `rev` (one listing + one batched config read). */
-  static async load(git: GitPort, rev: Revision, workspace: Workspace, tracked?: readonly TrackedFile[], options?: ModuleResolverOptions): Promise<ModuleResolver> {
-    return new ModuleResolver(await VirtualFileSystem.fromGit(git, rev, tracked), workspace, options);
+  static async load(git: GitPort, rev: Revision, workspace: Workspace, paths?: readonly string[], options?: ModuleResolverOptions): Promise<ModuleResolver> {
+    return new ModuleResolver(await VirtualFileSystem.fromGit(git, rev, paths), workspace, options);
   }
 
   resolve(fromFile: string, specifier: string): ResolutionResult {

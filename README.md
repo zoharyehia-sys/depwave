@@ -2,7 +2,28 @@
 
 **AST-driven monorepo dependency & impact analyzer.** Given a git diff, depwave tells you which symbols, packages and tests are affected, and *why*.
 
-> 🚧 **Status: Phase 0 (foundations).** Package skeletons, ports, layering rules and fixture goldens are in place. `depwave impact` exits with code 2 ("not implemented") until Phase 1.
+> 🚧 **Status: Phase 1 (file-level impact) works end to end.** `depwave impact` answers which test files a diff affects,
+> verified on every fixture scenario and on this repo itself. Symbol-level precision, the persistent cache and `depwave why` come next.
+
+## Usage
+
+```bash
+depwave impact --base origin/main
+```
+
+```bash
+depwave impact --base main --head WORKTREE --format json
+```
+
+- `--base` is compared via its **merge base** with `--head`, so commits that landed on main after you branched don't count.
+- `--head WORKTREE` includes uncommitted and untracked changes.
+- `--cwd <dir>` analyzes another repository. Exit codes: `0` ok, `1` analysis failed (one-line message), `2` not implemented.
+
+Paths that aren't part of the code under analysis (fixtures, examples, vendored copies) go in `depwave.config.json`:
+
+```json
+{ "ignore": ["fixtures/**"] }
+```
 
 - 📐 Design: [ARCHITECTURE.md](ARCHITECTURE.md)
 - 🧾 Decisions: [docs/adr](docs/adr)

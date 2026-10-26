@@ -12,7 +12,9 @@ const REPORTERS: Record<Format, () => Reporter> = {
   json: () => new JsonReporter(),
 };
 
-/** Exit code for "feature not built yet", distinct from analysis failures (1). */
+/** Analysis failed (not a git repo, unknown revision, broken manifest, ...). */
+export const EXIT_FAILURE = 1;
+/** Exit code for "feature not built yet", distinct from analysis failures. */
 export const EXIT_NOT_IMPLEMENTED = 2;
 
 export class ImpactCommand extends Command {
@@ -29,18 +31,17 @@ export class ImpactCommand extends Command {
   base = Option.String('--base', 'origin/main', { description: 'Base revision (the merge-base with HEAD is used)' });
   head = Option.String('--head', 'HEAD', { description: 'Head revision, or WORKTREE for uncommitted changes' });
   format = Option.String('--format', 'text', { validator: t.isEnum(FORMATS), description: 'Output format' });
+  cwd = Option.String('--cwd', { description: 'Repository to analyze (defaults to the current directory)' });
 
   async execute(): Promise<number> {
     try {
-      const { report, plan } = await createPipeline(process.cwd()).impact({ base: this.base, head: this.head });
+      const { report, plan } = await createPipeline(this.cwd ?? process.cwd()).impact({ base: this.base, head: this.head });
       this.context.stdout.write(REPORTERS[this.format]().render(report, plan));
       return 0;
     } catch (error) {
-      if (error instanceof NotImplementedError) {
-        this.context.stderr.write(`depwave: ${error.message}\n`);
-        return EXIT_NOT_IMPLEMENTED;
-      }
-      throw error;
+      // Users get one clear line, not a stack trace. The exit code tells CI what kind of failure it was.
+      this.context.stderr.write(`depwave: ${error instanceof Error ? error.message : String(error)}\n`);
+      return error instanceof NotImplementedError ? EXIT_NOT_IMPLEMENTED : EXIT_FAILURE;
     }
   }
 }

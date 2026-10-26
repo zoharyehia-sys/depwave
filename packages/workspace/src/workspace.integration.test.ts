@@ -218,6 +218,30 @@ describe('workspace flavours', () => {
   });
 });
 
+describe('depwave.config.json ignore globs', () => {
+  it('hides ignored paths from packages, source files and the path list', async () => {
+    const { inventory, commit } = setup({
+      'depwave.config.json': json({ ignore: ['fixtures/**', '**/*.generated.ts'] }),
+      'pnpm-workspace.yaml': 'packages: ["packages/*", "fixtures/*"]\n',
+      'packages/a/package.json': json({ name: 'a' }),
+      'packages/a/src/x.ts': 'export {};\n',
+      'packages/a/src/api.generated.ts': 'export {};\n',
+      'fixtures/demo/package.json': json({ name: 'demo' }),
+      'fixtures/demo/src/y.test.ts': 'export {};\n',
+    });
+    const result = await inventory.inventory(commit);
+    expect(result.workspace.packages.map((p) => p.name)).toEqual(['a']);
+    expect(result.files.map((f) => f.path)).toEqual(['packages/a/src/x.ts']);
+    expect(result.paths).not.toContain('fixtures/demo/src/y.test.ts');
+    expect(result.paths).toContain('depwave.config.json');
+  });
+
+  it('rejects a malformed config with the file named', async () => {
+    const { inventory, commit } = setup({ 'depwave.config.json': json({ ignore: 'fixtures/**' }) });
+    await expect(inventory.inventory(commit)).rejects.toThrow('depwave.config.json: `ignore` must be a list of glob strings');
+  });
+});
+
 describe('errors name the offending file', () => {
   const failure = async (files: Record<string, string>) => {
     const { discovery, commit } = setup(files);

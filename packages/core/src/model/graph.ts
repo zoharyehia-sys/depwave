@@ -31,15 +31,17 @@ export interface PackageNode extends BaseNode {
   name: string;
   /** Repo-relative POSIX path of the package root. */
   root: string;
-  manifestHash: string;
+  manifestPath: string;
 }
 
 export interface FileNode extends BaseNode {
   kind: 'file';
   path: string;
-  packageId: NodeId;
-  language: LanguageId;
-  /** Git blob OID (dirty/untracked files are hashed with `git hash-object`, so keys match across revisions). */
+  /** Owning package; absent for files outside every package. */
+  packageId?: NodeId;
+  /** Absent for non-source files that are imported (styles, JSON, assets): they still need nodes so edits to them count. */
+  language?: LanguageId;
+  /** Git blob OID for source files (dirty/untracked files are hashed with `git hash-object`); '' for assets. */
   contentHash: string;
   isTest: boolean;
   /** Top-level statements beyond declarations and imports. */

@@ -1,3 +1,4 @@
+import type { GlobalTrigger } from './changes.js';
 import type { Confidence, EdgeKind } from './graph.js';
 import type { NodeId } from './ids.js';
 
@@ -23,11 +24,23 @@ export interface ImpactedNode {
   score: number;
 }
 
+export interface UnresolvedImport {
+  from: string;
+  specifier: string;
+  reason: string;
+}
+
 export interface ImpactReport {
+  /** The merge base actually compared against (not the ref the user passed). */
   base: string;
   head: string;
+  /** Changed paths as git reported them (both sides of renames). */
+  changedFiles: string[];
   seeds: NodeId[];
+  globalTriggers: GlobalTrigger[];
   impacted: ImpactedNode[];
+  /** Head-revision imports that resolved to nothing. Surfaced so silent gaps can't hide. */
+  unresolved: UnresolvedImport[];
 }
 
 export interface TestPlanGroup {

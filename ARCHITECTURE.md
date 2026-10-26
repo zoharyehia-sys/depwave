@@ -521,13 +521,15 @@ checkout.test.ts
 - ✅ **Exit:** CI runs; fixtures have hand-written `expected-impact.json` golden files.
 
 ### Phase 1: MVP, file-level (weeks 2–4)
-- `WorkspaceDiscovery` (pnpm + npm/yarn workspaces), `SourceInventory`, `GitService`.
-- TS/JS `LanguageAdapter`: imports/exports via `.scm` queries (static, `require`, `import()` literal).
-- `ModuleResolver` (oxc-resolver), file-level `GraphBuilder`, `DependencyGraph`.
-- `DiffAnalyzer` (file-level), `ImpactPredictor` (reverse BFS), `TestSelector` (glob-based test detection).
-- `CacheManager` L1 (FileFacts) only.
-- CLI: `depwave impact --base <ref> [--format text|json]`, `depwave graph --format mermaid|dot`.
-- ✅ **Exit:** all fixtures pass their golden tests. 10k-file synthetic repo: cold < 30 s on 8 cores, warm < 5 s.
+- ✅ `WorkspaceDiscovery` (pnpm, npm/yarn workspaces, Nx, Turbo), `SourceInventory`, `GitService`.
+- ✅ TS/JS `LanguageAdapter` on WASM Tree-sitter (two-pass walk, ADR 0001).
+- ✅ `ModuleResolver` (own, git-backed, oxc as oracle, ADR 0005), file-level `GraphBuilder`, `DependencyGraph`.
+- ✅ `DiffAnalyzer` (file-level + global triggers), `ImpactPredictor` (reverse BFS over base ∪ head), `TestSelector`.
+- ✅ CLI: `depwave impact --base <ref> [--head <ref>|WORKTREE] [--format text|json] [--cwd <dir>]`. `depwave.config.json` `ignore`.
+- ⏳ `CacheManager` L1 (FileFacts): moved to its own step; facts are memoized per run in the meantime.
+- ⏳ `depwave graph --format mermaid|dot`.
+- ✅ **Exit (fixtures):** all 19 golden scenarios pass end to end. Mutation-checked: disabling wildcard widening or
+  base-graph traversal each breaks exactly the scenario that pins it. ⏳ **Exit (scale):** the 10k-file benchmark needs the cache.
 
 ### Phase 2: Precision & incrementality (weeks 5–8)
 - Symbol extraction plus `CALLS`/`REFERENCES` edges. `ReExportResolver` for barrels.

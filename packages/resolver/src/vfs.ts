@@ -1,4 +1,4 @@
-import type { GitPort, Revision, TrackedFile } from '@depwave/core';
+import type { GitPort, Revision } from '@depwave/core';
 import { parseJsonc } from './jsonc.js';
 import { dirOf } from './paths.js';
 
@@ -28,9 +28,9 @@ export class VirtualFileSystem {
     return CONFIG_FILE.test(path);
   }
 
-  /** One listing (reused if given) plus one batched read of every config file. */
-  static async fromGit(git: GitPort, rev: Revision, tracked?: readonly TrackedFile[]): Promise<VirtualFileSystem> {
-    const paths = (tracked ?? (await git.listTracked(rev))).map((f) => f.path);
+  /** One listing (skipped when `paths` is given) plus one batched read of every config file. */
+  static async fromGit(git: GitPort, rev: Revision, knownPaths?: readonly string[]): Promise<VirtualFileSystem> {
+    const paths = knownPaths ?? (await git.listTracked(rev)).map((f) => f.path);
     const contents = await git.readBlobs(rev, paths.filter((p) => VirtualFileSystem.isConfigFile(p)));
     return new VirtualFileSystem(paths, contents);
   }
