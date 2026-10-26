@@ -16,7 +16,7 @@ export interface ParserPort {
 
 /**
  * One per language. Language support is mostly data (Tree-sitter grammar + .scm queries) plus this adapter.
- * `TTree` stays generic so core never depends on Tree-sitter types.
+ * `extensions` must match LANGUAGE_EXTENSIONS for its id. `TTree` stays generic so core never depends on Tree-sitter.
  */
 export interface LanguageAdapter<TTree = unknown> {
   readonly id: LanguageId;

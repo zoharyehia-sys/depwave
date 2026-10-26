@@ -1,1 +1,3 @@
-export { WorkspaceDiscovery } from './WorkspaceDiscovery.js';
+export { createOwnerLookup } from './paths.js';
+export { SourceInventory } from './SourceInventory.js';
+export { createMatcher, WorkspaceDiscovery, WorkspaceError } from './WorkspaceDiscovery.js';

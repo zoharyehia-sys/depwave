@@ -29,7 +29,7 @@
 | **Module resolution** | **`oxc-resolver`** | `enhanced-resolve`, `resolve` | Rust-backed and enhanced-resolve-compatible. Handles `tsconfig` `paths`, `exports`/`imports` conditions, symlinked workspaces, and extension aliasing. Writing a resolver yourself is a trap. |
 | **Graph store** | **Custom `DependencyGraph`** (interned integer IDs, forward + reverse adjacency, per-file edge ownership) | graphology, ngraph | Incremental updates need "remove all edges *owned by* file X" in O(edges of X). Generic libraries don't model ownership, and their object-per-edge overhead hurts at 1M+ edges. A **graphology adapter** is kept for export/visualization only. |
 | **Cache engine** | **SQLite** via `better-sqlite3` (WAL mode) | LMDB, RocksDB, JSON files, Redis | One portable file that's easy to `actions/cache` in CI. It's transactional, so a crashed run can't corrupt state. It's queryable for debugging (`sqlite3 .ripple/cache.db`). Synchronous API means no async overhead on hot lookups. |
-| **Content hashing** | **Git blob OIDs** for tracked files + **xxh3-128** (`@node-rs/xxhash`) for dirty/untracked files | blake3, sha256 | `git ls-files -s` hands you a content hash for every tracked file *for free*, so a cold start hashes almost nothing. |
+| **Content hashing** | **Git blob OIDs everywhere**: `ls-tree` for commits, index OIDs for clean files, and one batched `git hash-object --stdin-paths` for dirty/untracked ones | xxh3, blake3, sha256 | Git hands you a content hash for every clean file *for free*, so a cold start hashes almost nothing. One hash function means a file's cache key is identical whether it's read from a commit or the working tree. |
 | **Parallelism** | `worker_threads` pool via **Piscina** | child processes | Parsing is CPU-bound and embarrassingly parallel per file. ⚠️ Verify that the native Tree-sitter addon is worker-safe in your pinned version; fall back to WASM in workers if not. |
 | **CLI framework** | **Clipanion** | commander, oclif, yargs | Commands are classes with typed options. They are unit-testable without spawning a process. Used by Yarn Berry. Lighter than oclif. |
 | **Config validation** | **Zod** | ajv | One schema gives both the TS types and the runtime validation. |
@@ -136,7 +136,7 @@ interface FileNode extends BaseNode {
   path: string;           // repo-relative, POSIX separators
   packageId: NodeId;
   language: LanguageId;   // 'typescript' | 'tsx' | 'javascript' | 'python' | ...
-  contentHash: string;    // git blob OID or xxh3
+  contentHash: string;    // git blob OID (hash-object for dirty/untracked files)
   isTest: boolean;
   hasSideEffects: boolean; // top-level statements beyond declarations/imports
 }
@@ -295,8 +295,8 @@ export interface LanguageAdapter {
 
 | Class | Package | Responsibility (one thing) | Depends on |
 |---|---|---|---|
-| `WorkspaceDiscovery` | workspace | Find packages and their roots/manifests from pnpm/yarn/npm/nx config. | fs |
-| `SourceInventory` | workspace | Produce `SourceFile[]` (path, language, contentHash) for a revision. Uses git OIDs where possible. | GitPort, WorkspaceDiscovery |
+| `WorkspaceDiscovery` | workspace | Find packages and their roots/manifests from pnpm/yarn/npm/nx/turbo config **at any revision**, reading manifests through git in one batch. | GitPort |
+| `SourceInventory` | workspace | Produce `SourceFile[]` (path, language, git OID, owning package) for a revision from one git listing. No filesystem walk. | GitPort, WorkspacePort |
 | `LanguageRegistry` | parser | Map extension → `LanguageAdapter`. | — |
 | `ASTParser` | parser | Turn source files into `FileFacts` via a worker pool. Knows nothing about other files. | LanguageRegistry, Piscina |
 | `ModuleResolver` | resolver | Turn `(fromFile, specifier)` into target file / external / unresolved, recording **probed paths**. | oxc-resolver |

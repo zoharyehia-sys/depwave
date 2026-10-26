@@ -40,8 +40,10 @@ module.exports = {
     {
       name: 'adapters-depend-only-on-core',
       severity: 'error',
-      comment: 'Adapters talk to each other only through core ports, wired together in cli.',
-      from: { path: `^packages/${ADAPTERS}/` },
+      comment:
+        'Adapters talk to each other only through core ports, wired together in cli. ' +
+        'Integration tests may compose real adapters (declared as devDependencies).',
+      from: { path: `^packages/${ADAPTERS}/`, pathNot: '\\.test\\.ts$' },
       to: { path: '^packages/', pathNot: ['^packages/core/', '^packages/$1/'] },
     },
     {

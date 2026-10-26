@@ -5,6 +5,7 @@ export * from './model/facts.js';
 export * from './model/graph.js';
 export * from './model/ids.js';
 export * from './model/impact.js';
+export * from './model/languages.js';
 export * from './model/snapshot.js';
 export * from './model/workspace.js';
 

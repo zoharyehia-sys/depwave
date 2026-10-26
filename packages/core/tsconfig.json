@@ -4,6 +4,7 @@
     "composite": true,
     "rootDir": "src",
     "outDir": "dist",
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
     // Purity guard: no @types/node here, so `fs`/`process` don't even typecheck in core.
     "types": []
   },

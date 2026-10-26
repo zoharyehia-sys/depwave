@@ -39,7 +39,7 @@ export interface FileNode extends BaseNode {
   path: string;
   packageId: NodeId;
   language: LanguageId;
-  /** Git blob OID for tracked files, xxh3-128 for dirty/untracked ones. */
+  /** Git blob OID (dirty/untracked files are hashed with `git hash-object`, so keys match across revisions). */
   contentHash: string;
   isTest: boolean;
   /** Top-level statements beyond declarations and imports. */

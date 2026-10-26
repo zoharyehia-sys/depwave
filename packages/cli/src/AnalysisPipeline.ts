@@ -5,18 +5,18 @@ import {
   type CachePort,
   type GitPort,
   type ImpactReport,
+  type InventoryPort,
   type ParserPort,
   type Revision,
   type TestPlan,
-  type WorkspacePort,
 } from '@ripple/core';
 import { GitService } from '@ripple/git';
 import { ASTParser, LanguageRegistry } from '@ripple/parser';
-import { WorkspaceDiscovery } from '@ripple/workspace';
+import { SourceInventory, WorkspaceDiscovery } from '@ripple/workspace';
 
 export interface PipelineDeps {
   git: GitPort;
-  workspace: WorkspacePort;
+  inventory: InventoryPort;
   parser: ParserPort;
   cache: CachePort;
 }
@@ -45,9 +45,10 @@ export class AnalysisPipeline {
 
 /** Composition root: the only place adapters are instantiated. */
 export function createPipeline(cwd: string): AnalysisPipeline {
+  const git = new GitService(cwd);
   return new AnalysisPipeline({
-    git: new GitService(cwd),
-    workspace: new WorkspaceDiscovery(),
+    git,
+    inventory: new SourceInventory(git, new WorkspaceDiscovery(git)),
     parser: new ASTParser(new LanguageRegistry()),
     cache: new CacheManager(join(cwd, '.ripple', 'cache.db')),
   });

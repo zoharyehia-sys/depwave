@@ -1,1 +1,1 @@
-export { GitService } from './GitService.js';
+export { GitError, GitService } from './GitService.js';
