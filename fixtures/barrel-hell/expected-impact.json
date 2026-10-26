@@ -1,0 +1,62 @@
+{
+  "$schema": "../expected-impact.schema.json",
+  "description": "Nested barrels (export *, named re-export, barrel-of-barrels). The fixture that shows why symbol-level analysis exists.",
+  "policy": "conservative",
+  "scenarios": [
+    {
+      "name": "button-change",
+      "description": "Button is used directly by home and indirectly via Card (also on home). settings and dialog only share the barrel.",
+      "changes": [{ "op": "modify", "path": "packages/ui/src/Button.ts", "find": "<button>", "replace": "<button type=\"button\">" }],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "packages/app/src/pages/dialog.test.ts",
+            "packages/app/src/pages/home.test.ts",
+            "packages/app/src/pages/settings.test.ts",
+            "packages/ui/src/Button.test.ts"
+          ]
+        },
+        "symbol": {
+          "impactedTests": ["packages/app/src/pages/home.test.ts", "packages/ui/src/Button.test.ts"]
+        }
+      }
+    },
+    {
+      "name": "nested-barrel-change",
+      "description": "Select sits behind forms/index.ts behind index.ts. Only settings imports it.",
+      "changes": [{ "op": "modify", "path": "packages/ui/src/forms/Select.ts", "find": ".join('')", "replace": ".join(' ')" }],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "packages/app/src/pages/dialog.test.ts",
+            "packages/app/src/pages/home.test.ts",
+            "packages/app/src/pages/settings.test.ts"
+          ]
+        },
+        "symbol": { "impactedTests": ["packages/app/src/pages/settings.test.ts"] }
+      }
+    },
+    {
+      "name": "comment-only-change",
+      "description": "A comment inside Modal's body: bodyHash is unchanged after normalization, so nothing is impacted at symbol level.",
+      "changes": [
+        {
+          "op": "modify",
+          "path": "packages/ui/src/Modal.ts",
+          "find": "Rendered into the portal root",
+          "replace": "Rendered into #portal-root"
+        }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "packages/app/src/pages/dialog.test.ts",
+            "packages/app/src/pages/home.test.ts",
+            "packages/app/src/pages/settings.test.ts"
+          ]
+        },
+        "symbol": { "impactedTests": [] }
+      }
+    }
+  ]
+}

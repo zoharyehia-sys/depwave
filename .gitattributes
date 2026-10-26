@@ -1,0 +1,2 @@
+# LF everywhere: content hashes and hunk line numbers must be identical on every OS.
+* text=auto eol=lf

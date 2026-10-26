@@ -1,0 +1,44 @@
+{
+  "$schema": "../expected-impact.schema.json",
+  "description": "Template-literal import globs, literal lazy imports, and a fully dynamic import() that forces conservative widening.",
+  "policy": "conservative",
+  "scenarios": [
+    {
+      "name": "locale-change",
+      "description": "import(`./locales/${locale}.ts`) becomes a glob edge to ./locales/*.ts.",
+      "changes": [
+        { "op": "modify", "path": "packages/app/src/i18n/locales/he.ts", "find": "'Shalom'", "replace": "'Shalom!'" }
+      ],
+      "expected": { "file": { "impactedTests": ["packages/app/src/i18n/load.test.ts"] } }
+    },
+    {
+      "name": "add-locale",
+      "description": "A new file matching the glob changes load.ts's dependency set.",
+      "changes": [
+        {
+          "op": "add",
+          "path": "packages/app/src/i18n/locales/fr.ts",
+          "content": "export const messages = { hello: 'Bonjour' };\n"
+        }
+      ],
+      "expected": { "file": { "impactedTests": ["packages/app/src/i18n/load.test.ts"] } }
+    },
+    {
+      "name": "lazy-route-change",
+      "changes": [{ "op": "modify", "path": "packages/app/src/pages/Home.ts", "find": "<h1>Home</h1>", "replace": "<h1>Welcome home</h1>" }],
+      "expected": { "file": { "impactedTests": ["packages/app/src/routes.test.ts"] } }
+    },
+    {
+      "name": "wildcard-widening",
+      "description": "registry.ts has import(name) with no static prefix, so under the conservative policy it depends on every file in its package. logger.ts has no static importer but still impacts registry.",
+      "changes": [
+        { "op": "modify", "path": "packages/plugins/src/builtin/logger.ts", "find": "[plugin:logger]", "replace": "[logger]" }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": ["packages/plugins/src/builtin/logger.test.ts", "packages/plugins/src/registry.test.ts"]
+        }
+      }
+    }
+  ]
+}

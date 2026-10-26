@@ -1,0 +1,31 @@
+{
+  "name": "@ripple/cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "AST-driven monorepo dependency & impact analyzer.",
+  "type": "module",
+  "bin": {
+    "ripple": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@ripple/cache": "workspace:*",
+    "@ripple/core": "workspace:*",
+    "@ripple/git": "workspace:*",
+    "@ripple/parser": "workspace:*",
+    "@ripple/reporters": "workspace:*",
+    "@ripple/resolver": "workspace:*",
+    "@ripple/workspace": "workspace:*",
+    "clipanion": "4.0.0-rc.4",
+    "typanion": "^3.14.0"
+  }
+}

@@ -1,0 +1,31 @@
+# Fixtures
+
+Small, realistic monorepos that act as the **spec** for ripple. Each fixture is:
+
+```text
+fixtures/<name>/
+├── repo/                  # the monorepo snapshot (plain files, NOT installed, NOT a git repo)
+└── expected-impact.json   # scenarios + golden expectations (schema: ../expected-impact.schema.json)
+```
+
+| Fixture | What it pins down |
+|---|---|
+| `pnpm-basic` | Cross-package propagation, barrel noise at file level, manifest changes as global triggers |
+| `barrel-hell` | `export *`, named re-exports, barrel-of-barrels; comment-only changes |
+| `ts-paths` | tsconfig `paths` aliases; file-vs-directory-index shadowing on add/delete (negative probes) |
+| `cycles` | SCC detection; traversal termination inside a cycle |
+| `dynamic-imports` | Template-literal globs, literal lazy imports, conservative widening for `import(expr)` |
+
+## Rules for golden files
+
+- `impactedTests` is the **exact** set: every test file not listed is asserted *not* impacted.
+- `expected.file` is required. `expected.symbol` defaults to `file` and must be a subset of it.
+- Lists are sorted; `modify.find` must occur exactly once in the file. `test/fixtures.test.ts` enforces all of this.
+- Expectations assume the fixture's `policy` (all Phase 0 fixtures use `conservative`).
+- Workspace packages must resolve **without** `node_modules`: ripple resolves them via the workspace manifest, so analysis works before `pnpm install`.
+
+## How they're used
+
+- **Phase 0:** `test/fixtures.test.ts` validates the goldens themselves.
+- **Phase 1+:** the golden test copies `repo/` to a temp dir, `git init` + commit, applies each scenario as a second commit,
+  runs `ripple impact --base HEAD~1`, and compares the impacted test set (file level first, symbol level from Phase 2).

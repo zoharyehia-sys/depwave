@@ -1,0 +1,26 @@
+{
+  "name": "ripple-monorepo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint:deps": "depcruise packages --config .dependency-cruiser.cjs",
+    "check": "pnpm typecheck && pnpm lint:deps && pnpm test && pnpm build",
+    "changeset": "changeset"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.4",
+    "@types/node": "^22.15.30",
+    "dependency-cruiser": "^16.10.3",
+    "turbo": "^2.5.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.3"
+  }
+}

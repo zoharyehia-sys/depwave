@@ -1,0 +1,54 @@
+{
+  "$schema": "../expected-impact.schema.json",
+  "description": "Single package with tsconfig path aliases and file-vs-directory-index shadowing (the probe-tracking cases).",
+  "policy": "conservative",
+  "scenarios": [
+    {
+      "name": "alias-at-lib",
+      "changes": [{ "op": "modify", "path": "src/lib/date.ts", "find": "slice(0, 10)", "replace": "slice(0, 7)" }],
+      "expected": { "file": { "impactedTests": ["src/features/report.test.ts"] } }
+    },
+    {
+      "name": "alias-tilde",
+      "changes": [
+        { "op": "modify", "path": "src/lib/math.ts", "find": "/ values.length", "replace": "/ Math.max(values.length, 1)" }
+      ],
+      "expected": { "file": { "impactedTests": ["src/features/stats.test.ts"] } }
+    },
+    {
+      "name": "shadowed-index-change",
+      "description": "'../utils' resolves to src/utils.ts, so src/utils/index.ts is dead code from legacy.ts's point of view.",
+      "changes": [
+        { "op": "modify", "path": "src/utils/index.ts", "find": "'utils/index.ts'", "replace": "'utils/index.ts (v2)'" }
+      ],
+      "expected": { "file": { "impactedTests": [] } }
+    },
+    {
+      "name": "delete-shadowing-file",
+      "description": "Deleting src/utils.ts re-points '../utils' at src/utils/index.ts. legacy.ts never changed, but its resolution did.",
+      "changes": [{ "op": "delete", "path": "src/utils.ts" }],
+      "expected": { "file": { "impactedTests": ["src/features/legacy.test.ts"] } }
+    },
+    {
+      "name": "add-shadowing-file",
+      "description": "Adding src/config.ts shadows src/config/index.ts for '../config'. Only a negative-probe-aware cache catches this.",
+      "changes": [{ "op": "add", "path": "src/config.ts", "content": "export const config = { source: 'config.ts' };\n" }],
+      "expected": { "file": { "impactedTests": ["src/features/settings.test.ts"] } }
+    },
+    {
+      "name": "tsconfig-change",
+      "description": "tsconfig changes are a global trigger: compilation of everything in scope may differ.",
+      "changes": [{ "op": "modify", "path": "tsconfig.json", "find": "\"~/*\": [\"src/*\"]", "replace": "\"~/*\": [\"./src/*\"]" }],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "src/features/legacy.test.ts",
+            "src/features/report.test.ts",
+            "src/features/settings.test.ts",
+            "src/features/stats.test.ts"
+          ]
+        }
+      }
+    }
+  ]
+}

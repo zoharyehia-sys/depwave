@@ -1,0 +1,66 @@
+{
+  "$schema": "../expected-impact.schema.json",
+  "description": "Three-package pnpm workspace: app → ui → utils, with a barrel index in utils.",
+  "policy": "conservative",
+  "scenarios": [
+    {
+      "name": "leaf-body-change",
+      "description": "Body change in utils/money.ts propagates up through ui to app.",
+      "changes": [{ "op": "modify", "path": "packages/utils/src/money.ts", "find": "'en-US'", "replace": "'en-GB'" }],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "packages/app/src/checkout.test.ts",
+            "packages/ui/src/PriceTag.test.ts",
+            "packages/utils/src/money.test.ts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "sibling-behind-barrel",
+      "description": "strings.ts shares the utils barrel with money.ts. File level drags in every barrel importer; symbol level knows nobody outside utils uses slugify.",
+      "changes": [
+        { "op": "modify", "path": "packages/utils/src/strings.ts", "find": ".trim()", "replace": ".trim().normalize('NFKD')" }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "packages/app/src/checkout.test.ts",
+            "packages/ui/src/PriceTag.test.ts",
+            "packages/utils/src/strings.test.ts"
+          ]
+        },
+        "symbol": { "impactedTests": ["packages/utils/src/strings.test.ts"] }
+      }
+    },
+    {
+      "name": "unrelated-app-change",
+      "changes": [{ "op": "modify", "path": "packages/app/src/about.ts", "find": "About us", "replace": "About Ripple" }],
+      "expected": { "file": { "impactedTests": ["packages/app/src/about.test.ts"] } }
+    },
+    {
+      "name": "manifest-dependency-change",
+      "description": "A new runtime dependency in utils can change any utils module: the package and all its dependents are impacted.",
+      "changes": [
+        {
+          "op": "modify",
+          "path": "packages/utils/package.json",
+          "find": "\"exports\": \"./src/index.ts\"",
+          "replace": "\"exports\": \"./src/index.ts\",\n  \"dependencies\": { \"decimal.js\": \"^10.4.3\" }"
+        }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "packages/app/src/about.test.ts",
+            "packages/app/src/checkout.test.ts",
+            "packages/ui/src/PriceTag.test.ts",
+            "packages/utils/src/money.test.ts",
+            "packages/utils/src/strings.test.ts"
+          ]
+        }
+      }
+    }
+  ]
+}

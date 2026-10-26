@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Ripple fixture golden file",
+  "type": "object",
+  "required": ["description", "policy", "scenarios"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "description": { "type": "string" },
+    "policy": { "enum": ["conservative", "balanced", "aggressive"] },
+    "cycles": {
+      "description": "Expected strongly connected components (files), each sorted.",
+      "type": "array",
+      "items": { "type": "array", "items": { "type": "string" }, "minItems": 2 }
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "changes", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "description": { "type": "string" },
+          "changes": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": ["op", "path", "find", "replace"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "op": { "const": "modify" },
+                    "path": { "type": "string" },
+                    "find": { "type": "string", "description": "Must occur exactly once in the file." },
+                    "replace": { "type": "string" }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["op", "path", "content"],
+                  "additionalProperties": false,
+                  "properties": { "op": { "const": "add" }, "path": { "type": "string" }, "content": { "type": "string" } }
+                },
+                {
+                  "type": "object",
+                  "required": ["op", "path"],
+                  "additionalProperties": false,
+                  "properties": { "op": { "const": "delete" }, "path": { "type": "string" } }
+                },
+                {
+                  "type": "object",
+                  "required": ["op", "path", "to"],
+                  "additionalProperties": false,
+                  "properties": { "op": { "const": "rename" }, "path": { "type": "string" }, "to": { "type": "string" } }
+                }
+              ]
+            }
+          },
+          "expected": {
+            "type": "object",
+            "required": ["file"],
+            "additionalProperties": false,
+            "properties": {
+              "file": { "$ref": "#/$defs/expectation" },
+              "symbol": {
+                "$ref": "#/$defs/expectation",
+                "description": "Defaults to `file` when omitted. Must be a subset of `file`."
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "expectation": {
+      "type": "object",
+      "required": ["impactedTests"],
+      "additionalProperties": false,
+      "properties": {
+        "impactedTests": {
+          "description": "EXACT set of impacted test files after the change, sorted. Every other test file is asserted NOT impacted.",
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

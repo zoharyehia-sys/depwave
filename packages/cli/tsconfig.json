@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"],
+  "references": [
+    { "path": "../core" },
+    { "path": "../cache" },
+    { "path": "../git" },
+    { "path": "../parser" },
+    { "path": "../reporters" },
+    { "path": "../resolver" },
+    { "path": "../workspace" }
+  ]
+}

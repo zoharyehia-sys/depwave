@@ -1,0 +1,19 @@
+{
+  "$schema": "../expected-impact.schema.json",
+  "description": "a → b → c → a import cycle, d depends on the cycle, e is independent.",
+  "policy": "conservative",
+  "cycles": [["src/a.ts", "src/b.ts", "src/c.ts"]],
+  "scenarios": [
+    {
+      "name": "change-inside-cycle",
+      "description": "Every member of the SCC is impacted, plus everything depending on it. Traversal must terminate.",
+      "changes": [{ "op": "modify", "path": "src/c.ts", "find": "a(n - 1) + 1", "replace": "a(n - 1) + 2" }],
+      "expected": { "file": { "impactedTests": ["src/a.test.ts", "src/d.test.ts"] } }
+    },
+    {
+      "name": "change-outside-cycle",
+      "changes": [{ "op": "modify", "path": "src/e.ts", "find": "'independent'", "replace": "'still independent'" }],
+      "expected": { "file": { "impactedTests": ["src/e.test.ts"] } }
+    }
+  ]
+}
