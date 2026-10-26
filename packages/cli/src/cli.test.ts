@@ -15,7 +15,7 @@ async function run(args: string[]): Promise<{ code: number; stdout: string; stde
   return { code, stdout: out.join(''), stderr: err.join('') };
 }
 
-describe('ripple CLI', () => {
+describe('depwave CLI', () => {
   it('prints its version', async () => {
     const { code, stdout } = await run(['--version']);
     expect(code).toBe(0);
@@ -24,7 +24,7 @@ describe('ripple CLI', () => {
 
   it('documents the impact command in --help', async () => {
     const { stdout } = await run(['--help']);
-    expect(stdout).toContain('ripple impact');
+    expect(stdout).toContain('depwave impact');
   });
 
   it('reports `impact` as not implemented with a dedicated exit code', async () => {

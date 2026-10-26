@@ -1,5 +1,5 @@
 {
-  "name": "@ripple/resolver",
+  "name": "@depwave/resolver",
   "version": "0.0.0",
   "private": true,
   "description": "Module resolution (oxc-resolver) with probe tracking.",
@@ -17,11 +17,11 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@ripple/core": "workspace:*"
+    "@depwave/core": "workspace:*"
   },
   "devDependencies": {
-    "@ripple/git": "workspace:^",
-    "@ripple/workspace": "workspace:^",
+    "@depwave/git": "workspace:^",
+    "@depwave/workspace": "workspace:^",
     "oxc-resolver": "11.24.2"
   }
 }

@@ -1,6 +1,6 @@
 /**
  * Validates the golden files themselves. Phase 1 adds the real golden test:
- * materialize repo/ into a temp git repo, commit, apply each scenario, commit, run `ripple impact`, compare.
+ * materialize repo/ into a temp git repo, commit, apply each scenario, commit, run `depwave impact`, compare.
  */
 import { describe, expect, it } from 'vitest';
 import { applyChanges, isTestFile, loadFixtures, symbolExpectation, type Expectation } from './support/fixtures.js';

@@ -7,7 +7,7 @@ import {
   type Revision,
   type SourceFile,
   type WorkspacePort,
-} from '@ripple/core';
+} from '@depwave/core';
 import { createOwnerLookup } from './paths.js';
 
 /**

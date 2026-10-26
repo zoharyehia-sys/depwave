@@ -16,4 +16,4 @@ When analysis is uncertain, widen the impact set:
 
 ## Consequences
 - ✅ Enforced selection can be trusted, backed by shadow-mode recall metrics in CI.
-- ⚠️ Codebases with heavy runtime magic see less reduction until plugins teach ripple their conventions.
+- ⚠️ Codebases with heavy runtime magic see less reduction until plugins teach depwave their conventions.

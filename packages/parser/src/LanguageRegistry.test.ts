@@ -1,4 +1,4 @@
-import type { LanguageAdapter } from '@ripple/core';
+import type { LanguageAdapter } from '@depwave/core';
 import { describe, expect, it } from 'vitest';
 import { LanguageRegistry } from './LanguageRegistry.js';
 

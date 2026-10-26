@@ -1,5 +1,5 @@
-import { NotImplementedError, type Reporter } from '@ripple/core';
-import { JsonReporter, TextReporter } from '@ripple/reporters';
+import { NotImplementedError, type Reporter } from '@depwave/core';
+import { JsonReporter, TextReporter } from '@depwave/reporters';
 import { Command, Option } from 'clipanion';
 import * as t from 'typanion';
 import { createPipeline } from '../AnalysisPipeline.js';
@@ -37,7 +37,7 @@ export class ImpactCommand extends Command {
       return 0;
     } catch (error) {
       if (error instanceof NotImplementedError) {
-        this.context.stderr.write(`ripple: ${error.message}\n`);
+        this.context.stderr.write(`depwave: ${error.message}\n`);
         return EXIT_NOT_IMPLEMENTED;
       }
       throw error;

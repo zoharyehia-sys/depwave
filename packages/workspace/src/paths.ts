@@ -1,4 +1,4 @@
-import type { WorkspacePackage } from '@ripple/core';
+import type { WorkspacePackage } from '@depwave/core';
 
 /** POSIX helpers for repo-relative paths ('' is the repo root). */
 export const dirOf = (path: string): string => {

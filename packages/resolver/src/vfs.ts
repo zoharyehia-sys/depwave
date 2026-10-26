@@ -1,4 +1,4 @@
-import type { GitPort, Revision, TrackedFile } from '@ripple/core';
+import type { GitPort, Revision, TrackedFile } from '@depwave/core';
 import { parseJsonc } from './jsonc.js';
 import { dirOf } from './paths.js';
 

@@ -1,11 +1,11 @@
-import type { ImpactReport, Reporter, TestPlan } from '@ripple/core';
+import type { ImpactReport, Reporter, TestPlan } from '@depwave/core';
 
 export class TextReporter implements Reporter {
   readonly format = 'text';
 
   render(report: ImpactReport, plan: TestPlan): string {
     const lines = [
-      `ripple impact ${report.base}...${report.head}`,
+      `depwave impact ${report.base}...${report.head}`,
       `  changed:  ${report.seeds.length} node(s)`,
       `  impacted: ${report.impacted.length} node(s)`,
       '',

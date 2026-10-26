@@ -18,7 +18,7 @@ export interface ImpactedNode {
   distance: number;
   /** Weakest-link confidence along the best path. */
   confidence: Confidence;
-  /** Next node on the shortest path back to a seed (for `ripple why`); undefined for seeds. */
+  /** Next node on the shortest path back to a seed (for `depwave why`); undefined for seeds. */
   via?: NodeId;
   score: number;
 }

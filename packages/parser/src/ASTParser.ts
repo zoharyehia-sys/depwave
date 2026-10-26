@@ -1,4 +1,4 @@
-import type { FileFacts, LanguageId, ParseInput, ParserPort } from '@ripple/core';
+import type { FileFacts, LanguageId, ParseInput, ParserPort } from '@depwave/core';
 import { createDefaultRegistry, type LanguageRegistry } from './LanguageRegistry.js';
 import { loadTreeSitter, type TreeSitterLanguageAdapter } from './treeSitter.js';
 

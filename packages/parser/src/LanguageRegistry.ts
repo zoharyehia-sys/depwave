@@ -1,4 +1,4 @@
-import type { LanguageAdapter, LanguageId } from '@ripple/core';
+import type { LanguageAdapter, LanguageId } from '@depwave/core';
 import { TypeScriptAdapter } from './languages/typescript/TypeScriptAdapter.js';
 import type { TreeSitterLanguageAdapter } from './treeSitter.js';
 

@@ -5,9 +5,9 @@
 import { existsSync, mkdirSync, symlinkSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { WORKTREE, type ResolutionResult, type Workspace } from '@ripple/core';
-import { GitService } from '@ripple/git';
-import { WorkspaceDiscovery } from '@ripple/workspace';
+import { WORKTREE, type ResolutionResult, type Workspace } from '@depwave/core';
+import { GitService } from '@depwave/git';
+import { WorkspaceDiscovery } from '@depwave/workspace';
 import { ResolverFactory } from 'oxc-resolver';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadFixtures, type Fixture } from '../../../test/support/fixtures.js';
@@ -110,13 +110,13 @@ describe('workspace packages resolve on a fresh clone (no install)', () => {
     expect(target(resolver.resolve('packages/app/src/checkout.test.ts', 'vitest'))).toBe('external:vitest');
   });
 
-  it('this repository: @ripple/core exports dist/ (unbuilt in git) and maps back to src/ through tsconfig', async () => {
+  it('this repository (working tree): @depwave/core exports dist/ (unbuilt) and maps back to src/ through tsconfig', async () => {
     const root = fileURLToPath(new URL('../../../', import.meta.url));
     const git = new GitService(root);
-    const workspace = await new WorkspaceDiscovery(git).discover('HEAD');
-    const resolver = await ModuleResolver.load(git, 'HEAD', workspace);
+    const workspace = await new WorkspaceDiscovery(git).discover(WORKTREE);
+    const resolver = await ModuleResolver.load(git, WORKTREE, workspace);
 
-    expect(target(resolver.resolve('packages/git/src/GitService.ts', '@ripple/core'))).toBe('packages/core/src/index.ts');
+    expect(target(resolver.resolve('packages/git/src/GitService.ts', '@depwave/core'))).toBe('packages/core/src/index.ts');
     expect(target(resolver.resolve('packages/git/src/GitService.ts', './parse.js'))).toBe('packages/git/src/parse.ts');
     expect(target(resolver.resolve('packages/git/src/GitService.ts', 'node:child_process'))).toBe('external:node:child_process');
     expect(target(resolver.resolve('packages/workspace/src/WorkspaceDiscovery.ts', 'picomatch'))).toBe('external:picomatch');

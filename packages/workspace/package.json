@@ -1,5 +1,5 @@
 {
-  "name": "@ripple/workspace",
+  "name": "@depwave/workspace",
   "version": "0.0.0",
   "private": true,
   "description": "Workspace discovery and source inventory.",
@@ -15,12 +15,12 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@ripple/core": "workspace:*",
+    "@depwave/core": "workspace:*",
     "picomatch": "^4.0.7",
     "yaml": "^2.9.1"
   },
   "devDependencies": {
-    "@ripple/git": "workspace:*",
+    "@depwave/git": "workspace:*",
     "@types/picomatch": "^4.0.2"
   }
 }

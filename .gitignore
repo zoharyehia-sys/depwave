@@ -3,5 +3,5 @@ dist/
 *.tsbuildinfo
 .turbo/
 coverage/
-.ripple/
+.depwave/
 *.log

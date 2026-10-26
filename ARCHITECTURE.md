@@ -1,6 +1,6 @@
-# Ripple — AST-Driven Monorepo Dependency & Impact Analyzer
+# Depwave — AST-Driven Monorepo Dependency & Impact Analyzer
 
-> **Working name:** `ripple` (CLI: `ripple`). Rename freely.
+> **Name:** `depwave` (CLI: `depwave`): a change sends a wave through the dependency graph; depwave measures how far it travels.
 > **One-liner:** Given a git diff, tell me exactly which symbols, packages, and tests are affected, and *why*, in under 2 seconds on a warm cache.
 
 ---
@@ -12,7 +12,7 @@
 | **Soundness over precision** | A missed test (false negative) costs far more than an extra test (false positive). When analysis is uncertain, widen the blast radius; never shrink it. |
 | **Pure core, impure edges** | Graph model, algorithms, and impact logic have zero I/O. Git, FS, SQLite, and Tree-sitter sit behind ports (hexagonal architecture). |
 | **Everything is a cacheable pure function** | `facts = parse(content, parserVersion)`. If inputs are the same, the output is reused. This is what makes incremental mode possible. |
-| **Explainable output** | Every impacted node carries the shortest path that reached it (`ripple why`). A tool that can't explain itself won't be trusted in CI. |
+| **Explainable output** | Every impacted node carries the shortest path that reached it (`depwave why`). A tool that can't explain itself won't be trusted in CI. |
 | **Incremental == full rebuild** | That equivalence is enforced with property-based tests. It is the most important invariant in the system. |
 
 ---
@@ -28,7 +28,7 @@
 | **Type-aware precision mode** (optional, Phase 3) | **TypeScript Compiler API** (`ts.LanguageService`) | ts-morph | Only for call-edge resolution that requires types (method calls on interfaces). Opt-in because it's 10–50× slower. |
 | **Module resolution** | **Own resolver over a git-backed virtual FS**, with **`oxc-resolver` as a differential test oracle** (ADR 0005) | `oxc-resolver` at runtime, `enhanced-resolve` | Needs complete probe lists (including missing paths) for cache invalidation, and must resolve commits that aren't checked out. oxc's JS API can't do either: no custom FS, no dependency report. The oracle keeps our algorithm honest. |
 | **Graph store** | **Custom `DependencyGraph`** (interned integer IDs, forward + reverse adjacency, per-file edge ownership) | graphology, ngraph | Incremental updates need "remove all edges *owned by* file X" in O(edges of X). Generic libraries don't model ownership, and their object-per-edge overhead hurts at 1M+ edges. A **graphology adapter** is kept for export/visualization only. |
-| **Cache engine** | **SQLite** via `better-sqlite3` (WAL mode) | LMDB, RocksDB, JSON files, Redis | One portable file that's easy to `actions/cache` in CI. It's transactional, so a crashed run can't corrupt state. It's queryable for debugging (`sqlite3 .ripple/cache.db`). Synchronous API means no async overhead on hot lookups. |
+| **Cache engine** | **SQLite** via `better-sqlite3` (WAL mode) | LMDB, RocksDB, JSON files, Redis | One portable file that's easy to `actions/cache` in CI. It's transactional, so a crashed run can't corrupt state. It's queryable for debugging (`sqlite3 .depwave/cache.db`). Synchronous API means no async overhead on hot lookups. |
 | **Content hashing** | **Git blob OIDs everywhere**: `ls-tree` for commits, index OIDs for clean files, and one batched `git hash-object --stdin-paths` for dirty/untracked ones | xxh3, blake3, sha256 | Git hands you a content hash for every clean file *for free*, so a cold start hashes almost nothing. One hash function means a file's cache key is identical whether it's read from a commit or the working tree. |
 | **Parallelism** | `worker_threads` pool via **Piscina** | child processes | Parsing is CPU-bound and embarrassingly parallel per file. ⚠️ Verify that the native Tree-sitter addon is worker-safe in your pinned version; fall back to WASM in workers if not. |
 | **CLI framework** | **Clipanion** | commander, oclif, yargs | Commands are classes with typed options. They are unit-testable without spawning a process. Used by Yarn Berry. Lighter than oclif. |
@@ -60,7 +60,7 @@
 flowchart LR
   subgraph Inputs
     GIT[(Git repo)]
-    CFG[ripple.config.ts]
+    CFG[depwave.config.ts]
   end
 
   subgraph Adapters["Adapters (I/O)"]
@@ -222,7 +222,7 @@ For CI-scale traversal there's an optional `freeze()` that produces a **CSR (com
 ### 3.1 Repository layout
 
 ```text
-ripple/
+depwave/
 ├── packages/
 │   ├── core/                     # PURE domain: no fs, no git, no sqlite
 │   │   ├── src/model/            # Node, Edge, FileFacts, ChangeSet, ImpactReport types
@@ -251,7 +251,7 @@ ripple/
 │   ├── pnpm-basic/  barrel-hell/  ts-paths/  cycles/  dynamic-imports/  python-mixed/
 ├── bench/                        # synthetic 10k/50k-file repo generator + benchmarks
 ├── docs/adr/                     # Architecture Decision Records (0001-tree-sitter.md, ...)
-└── ripple.config.ts              # dogfooding config
+└── depwave.config.ts              # dogfooding config
 ```
 
 ### 3.2 Ports (interfaces in `core/src/ports`)
@@ -356,7 +356,7 @@ classDiagram
   ImpactPredictor --> DependencyGraph
 ```
 
-### 3.5 Execution sequence: `ripple impact --base origin/main`
+### 3.5 Execution sequence: `depwave impact --base origin/main`
 
 ```mermaid
 sequenceDiagram
@@ -462,7 +462,7 @@ global triggers (from ImpactPolicy):
 ```ts
 function predict(g: CsrGraph, seeds: number[], policy: ImpactPolicy): ImpactReport {
   const dist = new Int32Array(g.size).fill(-1);
-  const parent = new Int32Array(g.size).fill(-1);   // for `ripple why` path reconstruction
+  const parent = new Int32Array(g.size).fill(-1);   // for `depwave why` path reconstruction
   const conf = new Uint8Array(g.size);              // weakest-link confidence along the path
   const queue = new Int32Array(g.size); let head = 0, tail = 0;
 
@@ -495,15 +495,15 @@ function predict(g: CsrGraph, seeds: number[], policy: ImpactPolicy): ImpactRepo
 ```
 
 - **Complexity:** O(V′ + E′), only the reachable subgraph. Typed arrays mean zero allocation per node.
-- **Cycles:** handled by the visited check. **Tarjan's SCC** runs once at build time to condense cycles for reporting ("these 14 files form a cycle") and for a `ripple cycles` lint command.
+- **Cycles:** handled by the visited check. **Tarjan's SCC** runs once at build time to condense cycles for reporting ("these 14 files form a cycle") and for a `depwave cycles` lint command.
 - **Granularity fallback:** traversal walks symbol edges. If a file has an `IMPORTS` edge but no resolvable `IMPORTS_SYMBOL` (namespace import `import * as x`, CommonJS `require`), the dependency is treated as depending on **every** exported symbol of the target. Conservative but sound.
 - **Barrel explosion fix:** because `ReExportResolver` binds imports to *defining* symbols, changing `Button` in `ui/src/Button.tsx` does **not** impact everything that imports *anything* from `ui/src/index.ts`. This is the single biggest precision win over file-level tools like `nx affected` and `turbo --filter`.
 - **Test selection:** a test is impacted if its node or any symbol/file it reaches via forward edges is in the impact set. Equivalently, and that's what we do, the reverse BFS reaches the test file node.
 - **Ranking:** `score = confidenceWeight × 0.85^distance`, with an optional historical boost in Phase 3. This gives a priority order for running tests (fail fast) without affecting the *set*.
-- **Explainability:** `ripple why <test>` walks `parent[]` back to a seed. That's O(depth).
+- **Explainability:** `depwave why <test>` walks `parent[]` back to a seed. That's O(depth).
 
 ```text
-$ ripple why packages/app/src/checkout.test.ts
+$ depwave why packages/app/src/checkout.test.ts
 checkout.test.ts
   └─ IMPORTS_SYMBOL  CheckoutForm          (packages/app/src/CheckoutForm.tsx)
      └─ REFERENCES   <PriceTag/>           (packages/ui/src/PriceTag.tsx)
@@ -526,7 +526,7 @@ checkout.test.ts
 - `ModuleResolver` (oxc-resolver), file-level `GraphBuilder`, `DependencyGraph`.
 - `DiffAnalyzer` (file-level), `ImpactPredictor` (reverse BFS), `TestSelector` (glob-based test detection).
 - `CacheManager` L1 (FileFacts) only.
-- CLI: `ripple impact --base <ref> [--format text|json]`, `ripple graph --format mermaid|dot`.
+- CLI: `depwave impact --base <ref> [--format text|json]`, `depwave graph --format mermaid|dot`.
 - ✅ **Exit:** all fixtures pass their golden tests. 10k-file synthetic repo: cold < 30 s on 8 cores, warm < 5 s.
 
 ### Phase 2: Precision & incrementality (weeks 5–8)
@@ -534,7 +534,7 @@ checkout.test.ts
 - Hunk→symbol mapping with `bodyHash` (whitespace/comment-only changes impact nothing).
 - L2 resolution cache with **probe tracking**, `applyDelta`, export-surface early cutoff.
 - L3 commit snapshots.
-- `ripple why <node>`, `ripple cycles`.
+- `depwave why <node>`, `depwave cycles`.
 - **fast-check suite: incremental ≡ full rebuild.**
 - ✅ **Exit:** warm incremental run < 2 s on 10k files. Measurable reduction in selected tests vs file-level on `barrel-hell`.
 
@@ -544,18 +544,18 @@ checkout.test.ts
 - TS Compiler API **precision mode** for method calls through interfaces.
 - **Plugin API** for framework conventions (Next.js routes, NestJS DI, Storybook stories).
 - **Git co-change mining:** files that historically change together get a ranking boost (never a set change).
-- `ripple watch` / daemon mode with Tree-sitter `tree.edit()` incremental re-parse.
-- Interactive HTML graph explorer (Cytoscape.js) via `ripple graph --format html`.
+- `depwave watch` / daemon mode with Tree-sitter `tree.edit()` incremental re-parse.
+- Interactive HTML graph explorer (Cytoscape.js) via `depwave graph --format html`.
 
 ### Phase 4: CI integration (weeks 13–15)
-- **GitHub Action** (`ripple-action`):
-  - Restore `.ripple/cache.db` via `actions/cache`, keyed on `merge-base SHA`, with restore-keys fallback to the latest `main`.
-  - Emit a test plan as JSON plus a **matrix** for sharded jobs (`strategy.matrix: ${{ fromJson(needs.ripple.outputs.plan) }}`).
+- **GitHub Action** (`depwave-action`):
+  - Restore `.depwave/cache.db` via `actions/cache`, keyed on `merge-base SHA`, with restore-keys fallback to the latest `main`.
+  - Emit a test plan as JSON plus a **matrix** for sharded jobs (`strategy.matrix: ${{ fromJson(needs.depwave.outputs.plan) }}`).
   - Post a sticky **PR comment** (markdown reporter): impacted packages, test count, top paths.
   - **SARIF** upload for cycle and unresolved-import findings in Code Scanning.
 - Runner adapters: `vitest related`, `jest --runTestsByPath`, `pytest` node IDs.
-- **Shadow mode (⭐ the trust builder):** run the full suite while recording ripple's prediction, and publish **recall** (impacted tests that failed ÷ all tests that failed) and **reduction %**. Only switch to enforced selection once recall is ≥ 99.9% over N weeks.
-- Safety valves: always run everything on `main` nightly, and support a `[ripple:all]` commit-message override.
+- **Shadow mode (⭐ the trust builder):** run the full suite while recording depwave's prediction, and publish **recall** (impacted tests that failed ÷ all tests that failed) and **reduction %**. Only switch to enforced selection once recall is ≥ 99.9% over N weeks.
+- Safety valves: always run everything on `main` nightly, and support a `[depwave:all]` commit-message override.
 - ✅ **Exit:** used on its own repo plus one real OSS monorepo, with a published benchmark in the README.
 
 ---
@@ -569,7 +569,7 @@ checkout.test.ts
 | Golden / integration | Fixture repos with scripted commits → `expected-impact.json` | Vitest + temp git repos |
 | **Property-based** | Incremental ≡ full rebuild. Symbol-level impact ⊆ file-level impact (precision only ever removes tests, never adds). | fast-check |
 | Performance | Synthetic repo generator (10k/50k files, configurable fan-out/barrels), regressions gated in CI | tinybench |
-| Dogfooding | `ripple impact` decides which of ripple's own tests run in its CI | GitHub Actions |
+| Dogfooding | `depwave impact` decides which of depwave's own tests run in its CI | GitHub Actions |
 
 ---
 
@@ -588,11 +588,11 @@ checkout.test.ts
 ## 8. CLI Surface (target)
 
 ```bash
-ripple impact --base origin/main                  # human-readable blast radius
-ripple impact --base origin/main --format json    # machine-readable for CI
-ripple tests  --base origin/main --runner vitest  # prints runner-ready args
-ripple why    packages/app/src/checkout.test.ts   # explain one impacted node
-ripple graph  --package @acme/ui --format mermaid # visualize
-ripple cycles                                     # Tarjan SCC lint
-ripple cache  stats|prune|clear
+depwave impact --base origin/main                  # human-readable blast radius
+depwave impact --base origin/main --format json    # machine-readable for CI
+depwave tests  --base origin/main --runner vitest  # prints runner-ready args
+depwave why    packages/app/src/checkout.test.ts   # explain one impacted node
+depwave graph  --package @acme/ui --format mermaid # visualize
+depwave cycles                                     # Tarjan SCC lint
+depwave cache  stats|prune|clear
 ```

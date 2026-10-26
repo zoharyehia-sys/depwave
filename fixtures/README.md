@@ -1,6 +1,6 @@
 # Fixtures
 
-Small, realistic monorepos that act as the **spec** for ripple. Each fixture is:
+Small, realistic monorepos that act as the **spec** for depwave. Each fixture is:
 
 ```text
 fixtures/<name>/
@@ -22,10 +22,10 @@ fixtures/<name>/
 - `expected.file` is required. `expected.symbol` defaults to `file` and must be a subset of it.
 - Lists are sorted; `modify.find` must occur exactly once in the file. `test/fixtures.test.ts` enforces all of this.
 - Expectations assume the fixture's `policy` (all Phase 0 fixtures use `conservative`).
-- Workspace packages must resolve **without** `node_modules`: ripple resolves them via the workspace manifest, so analysis works before `pnpm install`.
+- Workspace packages must resolve **without** `node_modules`: depwave resolves them via the workspace manifest, so analysis works before `pnpm install`.
 
 ## How they're used
 
 - **Phase 0:** `test/fixtures.test.ts` validates the goldens themselves.
 - **Phase 1+:** the golden test copies `repo/` to a temp dir, `git init` + commit, applies each scenario as a second commit,
-  runs `ripple impact --base HEAD~1`, and compares the impacted test set (file level first, symbol level from Phase 2).
+  runs `depwave impact --base HEAD~1`, and compares the impacted test set (file level first, symbol level from Phase 2).

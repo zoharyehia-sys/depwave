@@ -1,4 +1,4 @@
-import type { ChangeStatus, FileChange, Hunk, TrackedFile } from '@ripple/core';
+import type { ChangeStatus, FileChange, Hunk, TrackedFile } from '@depwave/core';
 
 /** Pure parsers for git's machine-readable (`-z`) output. Kept separate from process spawning so they're unit-testable. */
 

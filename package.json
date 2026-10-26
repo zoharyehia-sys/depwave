@@ -1,5 +1,5 @@
 {
-  "name": "ripple-monorepo",
+  "name": "depwave-monorepo",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.15.4",

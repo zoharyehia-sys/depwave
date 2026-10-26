@@ -36,7 +36,7 @@
     },
     {
       "name": "unrelated-app-change",
-      "changes": [{ "op": "modify", "path": "packages/app/src/about.ts", "find": "About us", "replace": "About Ripple" }],
+      "changes": [{ "op": "modify", "path": "packages/app/src/about.ts", "find": "About us", "replace": "About Depwave" }],
       "expected": { "file": { "impactedTests": ["packages/app/src/about.test.ts"] } }
     },
     {

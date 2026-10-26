@@ -1,8 +1,8 @@
 /**
  * Integration tests: real git repos (fixtures + synthetic layouts) → GitService → discovery/inventory.
  */
-import { languageFromPath, WORKTREE, type Workspace } from '@ripple/core';
-import { GitService } from '@ripple/git';
+import { languageFromPath, WORKTREE, type Workspace } from '@depwave/core';
+import { GitService } from '@depwave/git';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadFixtures } from '../../../test/support/fixtures.js';
 import { TempRepo } from '../../../test/support/tempRepo.js';

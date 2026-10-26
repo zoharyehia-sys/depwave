@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Ripple fixture golden file",
+  "title": "Depwave fixture golden file",
   "type": "object",
   "required": ["description", "policy", "scenarios"],
   "additionalProperties": false,

@@ -10,7 +10,7 @@ import type {
   Span,
   SymbolFact,
   SymbolKind,
-} from '@ripple/core';
+} from '@depwave/core';
 import type { Node } from 'web-tree-sitter';
 import { tokenHash } from '../../hash.js';
 

@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { CacheManager } from '@ripple/cache';
+import { CacheManager } from '@depwave/cache';
 import {
   NotImplementedError,
   type CachePort,
@@ -9,10 +9,10 @@ import {
   type ParserPort,
   type Revision,
   type TestPlan,
-} from '@ripple/core';
-import { GitService } from '@ripple/git';
-import { ASTParser } from '@ripple/parser';
-import { SourceInventory, WorkspaceDiscovery } from '@ripple/workspace';
+} from '@depwave/core';
+import { GitService } from '@depwave/git';
+import { ASTParser } from '@depwave/parser';
+import { SourceInventory, WorkspaceDiscovery } from '@depwave/workspace';
 
 export interface PipelineDeps {
   git: GitPort;
@@ -39,7 +39,7 @@ export class AnalysisPipeline {
   constructor(readonly deps: PipelineDeps) {}
 
   async impact(_request: ImpactRequest): Promise<ImpactResult> {
-    throw new NotImplementedError('ripple impact', 'Phase 1');
+    throw new NotImplementedError('depwave impact', 'Phase 1');
   }
 }
 
@@ -50,6 +50,6 @@ export function createPipeline(cwd: string): AnalysisPipeline {
     git,
     inventory: new SourceInventory(git, new WorkspaceDiscovery(git)),
     parser: new ASTParser(),
-    cache: new CacheManager(join(cwd, '.ripple', 'cache.db')),
+    cache: new CacheManager(join(cwd, '.depwave', 'cache.db')),
   });
 }

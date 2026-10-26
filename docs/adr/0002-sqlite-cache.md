@@ -7,7 +7,7 @@
 The cache holds content-addressed facts, resolutions with probe sets, and per-commit graph snapshots. It must survive crashes and be shippable between CI jobs.
 
 ## Decision
-A single SQLite file (`.ripple/cache.db`) via `better-sqlite3` in WAL mode. Keys use git blob OIDs for every file (dirty and untracked files are hashed with `git hash-object`).
+A single SQLite file (`.depwave/cache.db`) via `better-sqlite3` in WAL mode. Keys use git blob OIDs for every file (dirty and untracked files are hashed with `git hash-object`).
 
 ## Consequences
 - ✅ Transactional (no corrupt cache after a crash), one file for `actions/cache`, queryable for debugging, synchronous fast lookups.

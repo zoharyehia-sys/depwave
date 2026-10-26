@@ -7,9 +7,9 @@ import {
   type GraphSnapshot,
   type ResolutionKey,
   type ResolutionResult,
-} from '@ripple/core';
+} from '@depwave/core';
 
-/** SQLite (better-sqlite3, WAL) at `.ripple/cache.db`. L1 facts land in Phase 1, L2/L3 in Phase 2. */
+/** SQLite (better-sqlite3, WAL) at `.depwave/cache.db`. L1 facts land in Phase 1, L2/L3 in Phase 2. */
 export class CacheManager implements CachePort {
   constructor(readonly dbPath: string) {}
 

@@ -1,4 +1,4 @@
-import type { WorkspacePackage } from '@ripple/core';
+import type { WorkspacePackage } from '@depwave/core';
 import { describe, expect, it } from 'vitest';
 import { createOwnerLookup } from './paths.js';
 import { createMatcher } from './WorkspaceDiscovery.js';

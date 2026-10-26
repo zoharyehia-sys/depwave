@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { WORKTREE, type FileChange, type GitPort, type Hunk, type Revision, type TrackedFile } from '@ripple/core';
+import { WORKTREE, type FileChange, type GitPort, type Hunk, type Revision, type TrackedFile } from '@depwave/core';
 import { parseCatFileBatch, parseHunks, parseLsFilesStaged, parseLsTree, parsePathList, parseRawDiff } from './parse.js';
 
 export class GitError extends Error {

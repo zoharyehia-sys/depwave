@@ -29,31 +29,31 @@ importers:
 
   packages/cache:
     dependencies:
-      '@ripple/core':
+      '@depwave/core':
         specifier: workspace:*
         version: link:../core
 
   packages/cli:
     dependencies:
-      '@ripple/cache':
+      '@depwave/cache':
         specifier: workspace:*
         version: link:../cache
-      '@ripple/core':
+      '@depwave/core':
         specifier: workspace:*
         version: link:../core
-      '@ripple/git':
+      '@depwave/git':
         specifier: workspace:*
         version: link:../git
-      '@ripple/parser':
+      '@depwave/parser':
         specifier: workspace:*
         version: link:../parser
-      '@ripple/reporters':
+      '@depwave/reporters':
         specifier: workspace:*
         version: link:../reporters
-      '@ripple/resolver':
+      '@depwave/resolver':
         specifier: workspace:*
         version: link:../resolver
-      '@ripple/workspace':
+      '@depwave/workspace':
         specifier: workspace:*
         version: link:../workspace
       clipanion:
@@ -67,13 +67,13 @@ importers:
 
   packages/git:
     dependencies:
-      '@ripple/core':
+      '@depwave/core':
         specifier: workspace:*
         version: link:../core
 
   packages/parser:
     dependencies:
-      '@ripple/core':
+      '@depwave/core':
         specifier: workspace:*
         version: link:../core
       tree-sitter-typescript:
@@ -85,20 +85,20 @@ importers:
 
   packages/reporters:
     dependencies:
-      '@ripple/core':
+      '@depwave/core':
         specifier: workspace:*
         version: link:../core
 
   packages/resolver:
     dependencies:
-      '@ripple/core':
+      '@depwave/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
-      '@ripple/git':
+      '@depwave/git':
         specifier: workspace:^
         version: link:../git
-      '@ripple/workspace':
+      '@depwave/workspace':
         specifier: workspace:^
         version: link:../workspace
       oxc-resolver:
@@ -107,7 +107,7 @@ importers:
 
   packages/workspace:
     dependencies:
-      '@ripple/core':
+      '@depwave/core':
         specifier: workspace:*
         version: link:../core
       picomatch:
@@ -117,7 +117,7 @@ importers:
         specifier: ^2.9.1
         version: 2.9.1
     devDependencies:
-      '@ripple/git':
+      '@depwave/git':
         specifier: workspace:*
         version: link:../git
       '@types/picomatch':

@@ -1,4 +1,4 @@
-import type { GitPort, Revision, TrackedFile, Workspace, WorkspacePackage, WorkspacePort, WorkspaceTool } from '@ripple/core';
+import type { GitPort, Revision, TrackedFile, Workspace, WorkspacePackage, WorkspacePort, WorkspaceTool } from '@depwave/core';
 import picomatch from 'picomatch';
 import { parse as parseYaml } from 'yaml';
 import { baseOf, dirOf, joinPath } from './paths.js';

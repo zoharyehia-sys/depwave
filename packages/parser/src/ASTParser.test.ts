@@ -1,7 +1,7 @@
 /**
  * Every fixture file through the real ASTParser, with golden facts for the files each fixture exists to exercise.
  */
-import { languageFromPath, type FileFacts } from '@ripple/core';
+import { languageFromPath, type FileFacts } from '@depwave/core';
 import { describe, expect, it } from 'vitest';
 import { isTestFile, loadFixtures } from '../../../test/support/fixtures.js';
 import { ASTParser, PARSER_VERSION } from './ASTParser.js';

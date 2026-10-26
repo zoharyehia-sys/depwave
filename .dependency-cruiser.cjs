@@ -1,6 +1,6 @@
 /**
  * Architecture rules (see ARCHITECTURE.md §2.1):
- *   core      → nothing (pure: no node builtins, no npm deps, no other @ripple package)
+ *   core      → nothing (pure: no node builtins, no npm deps, no other @depwave package)
  *   adapters  → core only
  *   cli       → anything (composition root)
  */
@@ -33,7 +33,7 @@ module.exports = {
     {
       name: 'core-no-internal-deps',
       severity: 'error',
-      comment: 'core may not import any other @ripple package.',
+      comment: 'core may not import any other @depwave package.',
       from: { path: '^packages/core/' },
       to: { path: '^packages/', pathNot: '^packages/core/' },
     },

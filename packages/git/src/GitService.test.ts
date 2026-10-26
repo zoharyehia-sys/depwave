@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { WORKTREE, type FileChange } from '@ripple/core';
+import { WORKTREE, type FileChange } from '@depwave/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { TempRepo } from '../../../test/support/tempRepo.js';
 import { GitError, GitService } from './GitService.js';

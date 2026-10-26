@@ -5,12 +5,12 @@ import { dirname, join } from 'node:path';
 
 /** Throwaway git repo driven by the real git binary. Call `dispose()` in afterAll. */
 export class TempRepo {
-  readonly dir = mkdtempSync(join(tmpdir(), 'ripple-'));
+  readonly dir = mkdtempSync(join(tmpdir(), 'depwave-'));
 
   constructor() {
     this.git('init', '-q', '-b', 'main');
     for (const [key, value] of [
-      ['user.name', 'Ripple Test'],
+      ['user.name', 'Depwave Test'],
       ['user.email', 'test@example.com'],
       ['commit.gpgsign', 'false'],
       ['core.autocrlf', 'false'],

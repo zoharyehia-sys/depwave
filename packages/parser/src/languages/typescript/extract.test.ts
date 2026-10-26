@@ -1,4 +1,4 @@
-import type { LanguageId } from '@ripple/core';
+import type { LanguageId } from '@depwave/core';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadTreeSitter, type TreeSitterRuntime } from '../../treeSitter.js';
 import { TypeScriptAdapter, type JsLikeLanguage } from './TypeScriptAdapter.js';

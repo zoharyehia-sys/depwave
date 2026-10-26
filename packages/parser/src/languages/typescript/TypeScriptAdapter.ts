@@ -1,4 +1,4 @@
-import { LANGUAGE_EXTENSIONS } from '@ripple/core';
+import { LANGUAGE_EXTENSIONS } from '@depwave/core';
 import type { Tree } from 'web-tree-sitter';
 import type { GrammarId, TreeSitterLanguageAdapter } from '../../treeSitter.js';
 import { extractTypeScriptFacts, type ExtractedFacts } from './extract.js';

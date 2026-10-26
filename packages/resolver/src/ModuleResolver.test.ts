@@ -1,4 +1,4 @@
-import type { Workspace, WorkspacePackage } from '@ripple/core';
+import type { Workspace, WorkspacePackage } from '@depwave/core';
 import { describe, expect, it } from 'vitest';
 import { ModuleResolver } from './ModuleResolver.js';
 import { VirtualFileSystem } from './vfs.js';
@@ -196,13 +196,13 @@ describe('workspace packages (no node_modules anywhere)', () => {
   it('maps missing build outputs back to sources via tsconfig outDir/rootDir (like this repo)', () => {
     const r = repo(
       {
-        'packages/core/package.json': { name: '@ripple/core', exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } } },
+        'packages/core/package.json': { name: '@depwave/core', exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } } },
         'packages/core/tsconfig.json': { compilerOptions: { outDir: 'dist', rootDir: 'src' } },
         'packages/core/src/index.ts': '',
       },
-      [['@ripple/core', 'packages/core']],
+      [['@depwave/core', 'packages/core']],
     );
-    const result = r.resolve('packages/git/src/GitService.ts', '@ripple/core');
+    const result = r.resolve('packages/git/src/GitService.ts', '@depwave/core');
     expect(target(result)).toBe('packages/core/src/index.ts');
     expect(result.probed).toEqual(expect.arrayContaining(['packages/core/dist/index.d.ts', 'packages/core/dist/index.js']));
   });

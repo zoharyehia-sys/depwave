@@ -1,11 +1,11 @@
 {
-  "name": "@ripple/cli",
+  "name": "@depwave/cli",
   "version": "0.0.0",
   "private": true,
   "description": "AST-driven monorepo dependency & impact analyzer.",
   "type": "module",
   "bin": {
-    "ripple": "./dist/bin.js"
+    "depwave": "./dist/bin.js"
   },
   "exports": {
     ".": {
@@ -18,13 +18,13 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@ripple/cache": "workspace:*",
-    "@ripple/core": "workspace:*",
-    "@ripple/git": "workspace:*",
-    "@ripple/parser": "workspace:*",
-    "@ripple/reporters": "workspace:*",
-    "@ripple/resolver": "workspace:*",
-    "@ripple/workspace": "workspace:*",
+    "@depwave/cache": "workspace:*",
+    "@depwave/core": "workspace:*",
+    "@depwave/git": "workspace:*",
+    "@depwave/parser": "workspace:*",
+    "@depwave/reporters": "workspace:*",
+    "@depwave/resolver": "workspace:*",
+    "@depwave/workspace": "workspace:*",
     "clipanion": "4.0.0-rc.4",
     "typanion": "^3.14.0"
   }

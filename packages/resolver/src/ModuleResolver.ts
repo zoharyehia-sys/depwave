@@ -10,7 +10,7 @@ import {
   type UnresolvedReason,
   type Workspace,
   type WorkspacePackage,
-} from '@ripple/core';
+} from '@depwave/core';
 import { NearestFile } from './nearest.js';
 import { exportsTargets, importsTargets } from './packageMaps.js';
 import { dirOf, isRelativeSpecifier, joinPath, packageNameOf, resolvePath } from './paths.js';

@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { Language, Parser, type Tree } from 'web-tree-sitter';
-import type { LanguageAdapter } from '@ripple/core';
+import type { LanguageAdapter } from '@depwave/core';
 
 /**
  * WASM Tree-sitter (web-tree-sitter): no native build, identical behaviour on every OS and inside worker threads.

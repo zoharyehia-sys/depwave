@@ -1,4 +1,4 @@
-import { Confidence, type ImpactReport, type TestPlan } from '@ripple/core';
+import { Confidence, type ImpactReport, type TestPlan } from '@depwave/core';
 import { describe, expect, it } from 'vitest';
 import { JsonReporter } from './JsonReporter.js';
 import { TextReporter } from './TextReporter.js';
@@ -26,7 +26,7 @@ const plan: TestPlan = {
 describe('TextReporter', () => {
   it('lists impacted tests per package', () => {
     expect(new TextReporter().render(report, plan)).toMatchInlineSnapshot(`
-      "ripple impact abc123...HEAD
+      "depwave impact abc123...HEAD
         changed:  1 node(s)
         impacted: 1 node(s)
 

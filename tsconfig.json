@@ -1,13 +1,13 @@
 {
   // Typecheck-everything config (sources + tests + tooling), no emit.
   // Per-package builds use packages/*/tsconfig.json via `tsc -b` (see turbo.json).
-  // The `paths` mapping lets tests, editors and dependency-cruiser see @ripple/* sources without a build.
+  // The `paths` mapping lets tests, editors and dependency-cruiser see @depwave/* sources without a build.
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
     "types": ["node"],
     "paths": {
-      "@ripple/*": ["./packages/*/src/index.ts"]
+      "@depwave/*": ["./packages/*/src/index.ts"]
     }
   },
   "include": ["packages/*/src/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
