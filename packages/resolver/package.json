@@ -10,11 +10,18 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -b"
   },
   "dependencies": {
     "@ripple/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@ripple/git": "workspace:^",
+    "@ripple/workspace": "workspace:^",
+    "oxc-resolver": "11.24.2"
   }
 }
