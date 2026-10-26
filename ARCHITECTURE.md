@@ -24,7 +24,7 @@
 | Concern | Choice | Runner-up(s) | Why |
 |---|---|---|---|
 | **Implementation language** | **TypeScript (Node 22 LTS)** | Rust, Go | The target domain (JS/TS monorepos) lives in the Node ecosystem, which brings a native resolver, test runners, and contributors. CPU hot paths (parse, resolve) are already native via Tree-sitter and oxc. A Rust core via `napi-rs` stays possible if profiling demands it. |
-| **Parser** | **Tree-sitter** (`tree-sitter` native bindings, `web-tree-sitter` WASM fallback) | Babel, TS Compiler API, oxc-parser, native per-language ASTs | See 1.2. |
+| **Parser** | **Tree-sitter** via `web-tree-sitter` (WASM): no native build anywhere (ADR 0001) | Babel, TS Compiler API, oxc-parser, native per-language ASTs, native `tree-sitter` bindings | See 1.2. |
 | **Type-aware precision mode** (optional, Phase 3) | **TypeScript Compiler API** (`ts.LanguageService`) | ts-morph | Only for call-edge resolution that requires types (method calls on interfaces). Opt-in because it's 10–50× slower. |
 | **Module resolution** | **`oxc-resolver`** | `enhanced-resolve`, `resolve` | Rust-backed and enhanced-resolve-compatible. Handles `tsconfig` `paths`, `exports`/`imports` conditions, symlinked workspaces, and extension aliasing. Writing a resolver yourself is a trap. |
 | **Graph store** | **Custom `DependencyGraph`** (interned integer IDs, forward + reverse adjacency, per-file edge ownership) | graphology, ngraph | Incremental updates need "remove all edges *owned by* file X" in O(edges of X). Generic libraries don't model ownership, and their object-per-edge overhead hurts at 1M+ edges. A **graphology adapter** is kept for export/visualization only. |
@@ -235,9 +235,10 @@ ripple/
 │   │   └── src/ports/            # ⭐ interfaces implemented by adapters
 │   ├── parser/
 │   │   ├── src/ASTParser.ts      # worker-pool facade
-│   │   ├── src/worker.ts         # runs inside Piscina
+│   │   ├── src/treeSitter.ts     # WASM runtime + grammar loading
+│   │   ├── src/worker.ts         # runs inside Piscina (later)
 │   │   └── src/languages/
-│   │       ├── typescript/{adapter.ts, queries/imports.scm, queries/symbols.scm, queries/calls.scm}
+│   │       ├── typescript/{TypeScriptAdapter.ts, extract.ts}   # two-pass walk (ADR 0001)
 │   │       └── python/...
 │   ├── resolver/                 # ModuleResolver (oxc-resolver + probe tracking)
 │   ├── cache/                    # CacheManager (SQLite), migrations/

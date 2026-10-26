@@ -11,7 +11,7 @@ import {
   type TestPlan,
 } from '@ripple/core';
 import { GitService } from '@ripple/git';
-import { ASTParser, LanguageRegistry } from '@ripple/parser';
+import { ASTParser } from '@ripple/parser';
 import { SourceInventory, WorkspaceDiscovery } from '@ripple/workspace';
 
 export interface PipelineDeps {
@@ -49,7 +49,7 @@ export function createPipeline(cwd: string): AnalysisPipeline {
   return new AnalysisPipeline({
     git,
     inventory: new SourceInventory(git, new WorkspaceDiscovery(git)),
-    parser: new ASTParser(new LanguageRegistry()),
+    parser: new ASTParser(),
     cache: new CacheManager(join(cwd, '.ripple', 'cache.db')),
   });
 }

@@ -1,17 +1,38 @@
-import { NotImplementedError, type FileFacts, type LanguageId, type ParseInput, type ParserPort } from '@ripple/core';
-import type { LanguageRegistry } from './LanguageRegistry.js';
+import type { FileFacts, LanguageId, ParseInput, ParserPort } from '@ripple/core';
+import { createDefaultRegistry, type LanguageRegistry } from './LanguageRegistry.js';
+import { loadTreeSitter, type TreeSitterLanguageAdapter } from './treeSitter.js';
 
-/** Tree-sitter facade. Phase 1 adds the Piscina worker pool and the TypeScript adapter + .scm queries. */
+/**
+ * Part of every facts cache key. Bump it whenever extraction output can change: extractor logic,
+ * web-tree-sitter or grammar upgrades.
+ */
+export const PARSER_VERSION = 'ts-1';
+
+/** Tree-sitter facade: source files in, FileFacts out. Sequential for now; the Piscina worker pool comes later. */
 export class ASTParser implements ParserPort {
-  readonly version = '0.0.0';
+  readonly version = PARSER_VERSION;
 
-  constructor(private readonly languages: LanguageRegistry) {}
+  constructor(private readonly languages: LanguageRegistry<TreeSitterLanguageAdapter> = createDefaultRegistry()) {}
 
   supports(path: string): LanguageId | undefined {
     return this.languages.languageOf(path);
   }
 
-  async *extract(_files: Iterable<ParseInput>): AsyncIterable<FileFacts> {
-    throw new NotImplementedError('ASTParser.extract', 'Phase 1');
+  async *extract(files: Iterable<ParseInput>): AsyncIterable<FileFacts> {
+    const runtime = await loadTreeSitter();
+    for (const file of files) {
+      const adapter = this.languages.forPath(file.path);
+      if (!adapter) throw new Error(`No language adapter for ${file.path}`);
+
+      const tree = runtime.parserFor(adapter.grammar).parse(file.content);
+      if (!tree) throw new Error(`Tree-sitter failed to parse ${file.path}`);
+      let facts: Omit<FileFacts, 'contentHash' | 'parserVersion'>;
+      try {
+        facts = adapter.extractFacts(tree, file.content, file.path);
+      } finally {
+        tree.delete(); // WASM memory is not garbage-collected
+      }
+      yield { ...facts, contentHash: file.contentHash, parserVersion: this.version };
+    }
   }
 }

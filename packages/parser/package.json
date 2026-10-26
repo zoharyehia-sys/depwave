@@ -10,11 +10,15 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -b"
   },
   "dependencies": {
-    "@ripple/core": "workspace:*"
+    "@ripple/core": "workspace:*",
+    "tree-sitter-typescript": "0.23.2",
+    "web-tree-sitter": "0.27.1"
   }
 }

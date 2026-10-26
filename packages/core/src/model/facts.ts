@@ -21,9 +21,11 @@ export interface FileFacts {
 export type ImportKind = 'static' | 'type' | 'dynamic' | 'require' | 'side-effect';
 
 export interface ImportBinding {
-  /** Exported name in the target module; `default` and `*` (namespace) are special. */
+  /** Exported name in the target module; `default` and `*` (namespace / whole CommonJS module) are special. */
   imported: string;
   local: string;
+  /** `import { type A, b }`: this binding alone is type-only. */
+  typeOnly?: boolean;
 }
 
 export interface ImportFact {
@@ -50,10 +52,13 @@ export interface ExportFact {
 }
 
 export interface SymbolFact {
+  /** Top-level name, `Class.method` for members, or `default` for anonymous default exports. */
   name: string;
   kind: SymbolKind;
   exported: boolean | 'default';
+  /** Lines are 1-based and inclusive. Includes the `export` keyword when the statement declares only this symbol. */
   span: Span;
+  /** Hash of the token stream without comments: whitespace/comment-only edits don't change it. */
   bodyHash: string;
   /** Enclosing symbol for members, e.g. the class of a method. */
   parent?: string;
