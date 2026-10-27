@@ -1,11 +1,22 @@
 import type { GraphEdge, GraphNode } from './graph.js';
+import type { NodeId } from './ids.js';
+import type { UnresolvedImport } from './impact.js';
+import type { Workspace } from './workspace.js';
 
-/** Serializable graph at one commit. Commits are immutable, so snapshots never need invalidation. */
+export const SNAPSHOT_FORMAT = 1;
+
+/**
+ * Everything the pipeline derives from one commit, serializable. Commits are immutable, so a snapshot keyed by
+ * (commit, configHash) never needs invalidation: a hit skips inventory, parsing, resolution and linking entirely.
+ */
 export interface GraphSnapshot {
-  formatVersion: 1;
+  formatVersion: typeof SNAPSHOT_FORMAT;
   commit: string;
-  /** Hash of the depwave config + parser versions the snapshot was built with. */
+  /** Parser + resolver + depwave config versions the snapshot was built with. */
   configHash: string;
+  workspace: Workspace;
   nodes: GraphNode[];
   edges: GraphEdge[];
+  wildcards: Array<[scope: NodeId, dependents: NodeId[]]>;
+  unresolved: UnresolvedImport[];
 }

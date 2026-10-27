@@ -1,5 +1,6 @@
 import type { FileNode, GraphEdge, GraphNode, PackageNode } from '../model/graph.js';
 import type { NodeId } from '../model/ids.js';
+import type { GraphSnapshot } from '../model/snapshot.js';
 
 /** Wildcard scope for files that belong to no package. */
 export const NO_PACKAGE: NodeId = 'pkg:<none>';
@@ -103,6 +104,23 @@ export class DependencyGraph implements GraphView {
 
   packages(): Iterable<PackageNode> {
     return this.nodes('package');
+  }
+
+  /** Plain-data form for persistence. Order is insertion order, so serialize → load round-trips exactly. */
+  toData(): Pick<GraphSnapshot, 'nodes' | 'edges' | 'wildcards'> {
+    return {
+      nodes: [...this.nodeMap.values()],
+      edges: [...this.edges.values()],
+      wildcards: [...this.wildcards].map(([scope, dependents]) => [scope, [...dependents]]),
+    };
+  }
+
+  static fromData(data: Pick<GraphSnapshot, 'nodes' | 'edges' | 'wildcards'>): DependencyGraph {
+    const graph = new DependencyGraph();
+    for (const node of data.nodes) graph.addNode(node);
+    for (const edge of data.edges) graph.addEdge(edge);
+    for (const [scope, dependents] of data.wildcards) for (const id of dependents) graph.addWildcardDependency(scope, id);
+    return graph;
   }
 }
 

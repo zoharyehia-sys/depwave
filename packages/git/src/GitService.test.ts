@@ -93,6 +93,13 @@ describe('GitService (against a real repo)', () => {
     expect(await service.mergeBase('feature', WORKTREE)).toBe(c1);
   });
 
+  it('resolves refs to full commit SHAs and leaves WORKTREE alone', async () => {
+    expect(await service.resolveRevision('main')).toMatch(/^[0-9a-f]{40}$/);
+    expect(await service.resolveRevision(c1.slice(0, 8))).toBe(c1);
+    expect(await service.resolveRevision(WORKTREE)).toBe(WORKTREE);
+    await expect(service.resolveRevision('no-such-ref')).rejects.toBeInstanceOf(GitError);
+  });
+
   it('resolves the repo root from a subdirectory, so paths stay root-relative', async () => {
     const nested = new GitService(join(repo.dir, 'src'));
     expect((await nested.diff(c1, c2)).map((c) => c.path)).toContain('src/a.ts');

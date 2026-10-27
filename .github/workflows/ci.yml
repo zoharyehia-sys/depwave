@@ -16,6 +16,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # depwave needs history to find the merge base
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -26,3 +28,26 @@ jobs:
       - run: pnpm lint:deps
       - run: pnpm test
       - run: pnpm build
+
+      # Dogfooding: the built CLI must analyze this very change. A crash, an unresolved import, or a git edge case
+      # here is a regression no unit test caught. Make this job a required check in branch protection.
+      - name: Restore depwave cache
+        uses: actions/cache@v4
+        with:
+          path: .depwave
+          key: depwave-${{ runner.os }}-${{ github.sha }}
+          restore-keys: depwave-${{ runner.os }}-
+      - name: depwave impact (self-host)
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then BASE="origin/${{ github.base_ref }}"; else BASE="HEAD~1"; fi
+          node packages/cli/dist/bin.js impact --base "$BASE" --head HEAD
+          node packages/cli/dist/bin.js impact --base "$BASE" --head HEAD --format json > depwave-impact.json
+          node -e "const r=require('./depwave-impact.json').report; if (r.unresolved.length) { console.error('unresolved imports:', r.unresolved); process.exit(1); }"
+          node packages/cli/dist/bin.js cache stats
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: depwave-impact-${{ matrix.os }}
+          path: depwave-impact.json
+          if-no-files-found: ignore

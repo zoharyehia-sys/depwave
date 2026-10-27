@@ -410,6 +410,8 @@ sequenceDiagram
 |---|---|---|---|
 | **L1: FileFacts** | `(contentHash, languageId, parserVersion)` | Nothing. It's content-addressed and immutable. GC by LRU. | Facts are a pure function of content. Renames are free (same OID, so same facts). Branch switches are free. |
 | **L2: Resolutions** | `(fromDir, specifier, resolverConfigHash)` + stored `probed[]` | (a) any `tsconfig`/`package.json` in scope changes, which changes `resolverConfigHash`; (b) a file is **added/deleted** at a path in some entry's `probed[]` | Resolution depends on what *doesn't* exist. Adding `utils.ts` next to `utils/index.ts` changes what `./utils` resolves to, even though no importing file changed. Tracking negative probes catches this. Most tools get it wrong. |
+
+> **Measured (2026-10-27): L2 is stored and tested but not wired in.** Our resolver runs over an in-memory virtual FS at ~4.1 µs per import; an L2 SQLite hit costs ~5.9 µs *before* any staleness check. Probe tracking still matters: it is what makes resolution results trustworthy, and it is what a disk-backed resolver (or a long-running daemon) would key on. L1 + L3 deliver the speed-up.
 | **L3: Graph snapshots** | `commitSha` (+ config hash) | Never. Commits are immutable. | Lets CI start from the merge-base graph instead of a cold build. Snapshots are stored as a compact binary (msgpack + CSR arrays) inside SQLite. |
 
 ### 4.2 `applyDelta` algorithm (git diff → updated graph)
@@ -526,7 +528,7 @@ checkout.test.ts
 - ✅ `ModuleResolver` (own, git-backed, oxc as oracle, ADR 0005), file-level `GraphBuilder`, `DependencyGraph`.
 - ✅ `DiffAnalyzer` (file-level + global triggers), `ImpactPredictor` (reverse BFS over base ∪ head), `TestSelector`.
 - ✅ CLI: `depwave impact --base <ref> [--head <ref>|WORKTREE] [--format text|json] [--cwd <dir>]`. `depwave.config.json` `ignore`.
-- ⏳ `CacheManager` L1 (FileFacts): moved to its own step; facts are memoized per run in the meantime.
+- ✅ `CacheManager` (SQLite, WAL): L1 facts and L3 commit snapshots wired in; L2 stored but unused (see §4.1). `depwave cache stats|clear`, `--no-cache`.
 - ⏳ `depwave graph --format mermaid|dot`.
 - ✅ **Exit (fixtures):** all 19 golden scenarios pass end to end. Mutation-checked: disabling wildcard widening or
   base-graph traversal each breaks exactly the scenario that pins it. ⏳ **Exit (scale):** the 10k-file benchmark needs the cache.

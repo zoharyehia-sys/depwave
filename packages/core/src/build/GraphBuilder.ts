@@ -7,6 +7,9 @@ import type { Inventory, WorkspacePackage } from '../model/workspace.js';
 import { dirOf, isTestPath, isWithin, resolveRelative } from '../paths.js';
 import type { ResolverPort } from '../ports/resolver.js';
 
+/** Bump whenever linking output can change for the same inputs: it's part of every snapshot cache key. */
+export const GRAPH_VERSION = 1;
+
 export interface GraphBuildInput {
   inventory: Inventory;
   /** Facts per source file path. Files without facts become nodes without outgoing edges. */

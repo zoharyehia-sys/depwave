@@ -37,6 +37,11 @@ export class GitService implements GitPort {
     return (await this.git(['merge-base', commitish(a), commitish(b)])).trim();
   }
 
+  async resolveRevision(rev: Revision): Promise<string> {
+    if (rev === WORKTREE) return WORKTREE;
+    return (await this.git(['rev-parse', '--verify', '--end-of-options', `${rev}^{commit}`])).trim();
+  }
+
   async diff(base: Revision, head: Revision): Promise<FileChange[]> {
     assertCommit(base, 'base');
     const range = head === WORKTREE ? [base] : [base, head];

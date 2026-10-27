@@ -16,9 +16,11 @@ export interface ResolutionKey {
 }
 
 export interface CacheStats {
+  path: string;
   facts: number;
   resolutions: number;
   snapshots: number;
+  /** Database + WAL file size on disk. */
   bytes: number;
 }
 
@@ -41,5 +43,7 @@ export interface CachePort {
   saveSnapshot(snapshot: GraphSnapshot): void;
 
   stats(): CacheStats;
+  /** Empties every layer and reclaims disk space. */
+  clear(): void;
   close(): void;
 }

@@ -14,6 +14,8 @@ export interface TrackedFile {
 export interface GitPort {
   /** WORKTREE is treated as HEAD. */
   mergeBase(a: Revision, b: Revision): Promise<string>;
+  /** Full commit SHA for a ref (`HEAD`, a branch, a short SHA). WORKTREE is returned unchanged: it has no SHA. */
+  resolveRevision(rev: Revision): Promise<string>;
   /** Changed files with rename detection. With `head` = WORKTREE, includes unstaged and untracked (non-ignored) files. */
   diff(base: Revision, head: Revision): Promise<FileChange[]>;
   /**
