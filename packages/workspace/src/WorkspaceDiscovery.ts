@@ -1,4 +1,4 @@
-import type { GitPort, Revision, TrackedFile, Workspace, WorkspacePackage, WorkspacePort, WorkspaceTool } from '@depwave/core';
+import { stripBom, type GitPort, type Revision, type TrackedFile, type Workspace, type WorkspacePackage, type WorkspacePort, type WorkspaceTool } from '@depwave/core';
 import picomatch from 'picomatch';
 import { parse as parseYaml } from 'yaml';
 import { baseOf, dirOf, joinPath } from './paths.js';
@@ -81,8 +81,8 @@ export class WorkspaceDiscovery implements WorkspacePort {
     ]);
 
     const packages = dirs.map((dir) => toPackage(dir, manifests, packageDirs.has(dir), projectDirs.has(dir)));
-    assertUniqueNames(packages);
-    return { tools, packages };
+    const warnings = duplicateNameWarnings(packages);
+    return warnings.length > 0 ? { tools, packages, warnings } : { tools, packages };
   }
 }
 
@@ -109,7 +109,7 @@ function parseJson<T>(files: Map<string, string>, path: string): T | undefined {
   const text = files.get(path);
   if (text === undefined) return undefined;
   try {
-    const value: unknown = JSON.parse(text);
+    const value: unknown = JSON.parse(stripBom(text));
     if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('expected a JSON object');
     return value as T;
   } catch (error) {
@@ -149,13 +149,14 @@ export function createMatcher(patterns: readonly string[]): (dir: string) => boo
   return picomatch(include, { ignore: exclude });
 }
 
-function assertUniqueNames(packages: readonly WorkspacePackage[]): void {
-  const seen = new Map<string, string>();
-  for (const pkg of packages) {
-    const other = seen.get(pkg.name);
-    if (other !== undefined) {
-      throw new WorkspaceError(pkg.manifestPath, `duplicate package name "${pkg.name}" (also in ${other})`);
-    }
-    seen.set(pkg.name, pkg.manifestPath);
-  }
+/**
+ * pnpm accepts several workspace packages with one name (Vite's test fixtures do this), so duplicates are a warning,
+ * not an error. The resolver picks the package nearest the importer for an ambiguous name.
+ */
+function duplicateNameWarnings(packages: readonly WorkspacePackage[]): string[] {
+  const byName = new Map<string, string[]>();
+  for (const pkg of packages) byName.set(pkg.name, [...(byName.get(pkg.name) ?? []), pkg.manifestPath]);
+  return [...byName]
+    .filter(([, manifests]) => manifests.length > 1)
+    .map(([name, manifests]) => `package name "${name}" is used by ${manifests.length} packages (${manifests.join(', ')}); imports of it resolve to the nearest one`);
 }

@@ -1,4 +1,8 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { WORKTREE, type FileChange } from '@depwave/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { TempRepo } from '../../../test/support/tempRepo.js';
@@ -205,5 +209,42 @@ describe('GitService (against a real repo)', () => {
     it('reports hunks for unstaged edits', async () => {
       expect(await service.hunks(c2, WORKTREE, 'src/a.ts')).toEqual([{ oldStart: 1, oldLines: 10, newStart: 1, newLines: 1 }]);
     });
+  });
+});
+
+describe('GitService merge-base hints (common first-run failures)', () => {
+  it('names a base revision that does not exist', async () => {
+    const repo = new TempRepo();
+    try {
+      repo.write('a.ts', 'export {};\n');
+      repo.commit('init');
+      const error = await new GitService(repo.dir).mergeBase('origin/main', 'HEAD').catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(GitError);
+      expect((error as GitError).message).toMatch(/fatal: revision 'origin\/main' not found\. Fetch it first .* or pass another --base\.$/);
+    } finally {
+      repo.dispose();
+    }
+  });
+
+  it('explains a shallow clone whose history does not reach the merge base', async () => {
+    const origin = new TempRepo();
+    const clone = mkdtempSync(join(tmpdir(), 'depwave-shallow-'));
+    try {
+      origin.write('a.ts', 'export const a = 1;\n');
+      origin.commit('base');
+      origin.git('checkout', '-q', '-b', 'feature');
+      origin.write('a.ts', 'export const a = 2;\n');
+      origin.commit('feature work');
+      origin.git('checkout', '-q', 'main');
+      origin.write('b.ts', 'export const b = 1;\n');
+      origin.commit('main moves on');
+      // Like CI's default checkout: one commit of each branch, no shared history.
+      execFileSync('git', ['clone', '-q', '--depth', '1', '--no-single-branch', pathToFileURL(origin.dir).href, clone]);
+      const error = await new GitService(clone).mergeBase('origin/main', 'origin/feature').catch((e: unknown) => e);
+      expect((error as GitError).message).toMatch(/no merge base .* in this shallow clone\. Fetch full history \(actions\/checkout with fetch-depth: 0/);
+    } finally {
+      rmSync(clone, { recursive: true, force: true });
+      origin.dispose();
+    }
   });
 });

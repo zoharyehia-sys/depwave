@@ -1,4 +1,5 @@
 import type { ImpactReport, Reporter, TestPlan } from '@depwave/core';
+import { groupTriggers, listPaths } from './triggers.js';
 
 const short = (rev: string) => (/^[0-9a-f]{40}$/.test(rev) ? rev.slice(0, 12) : rev);
 
@@ -13,9 +14,10 @@ export class TextReporter implements Reporter {
       `  impacted nodes: ${report.impacted.length}`,
       `  impacted tests: ${testCount}`,
     ];
-    for (const trigger of report.globalTriggers) {
-      lines.push(`  trigger:        ${trigger.path} (${trigger.kind}${trigger.scope === undefined ? ', everything' : ''})`);
+    for (const { sample, paths } of groupTriggers(report.globalTriggers)) {
+      lines.push(`  trigger:        ${listPaths(paths)} (${sample.kind}${sample.scope === undefined ? ', everything' : ''})`);
     }
+    for (const warning of report.warnings ?? []) lines.push(`  ⚠ ${warning}`);
     if (report.unresolved.length > 0) {
       lines.push(`  ⚠ unresolved imports: ${report.unresolved.length} (see --format json)`);
     }

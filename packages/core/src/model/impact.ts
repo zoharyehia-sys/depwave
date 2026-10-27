@@ -42,6 +42,8 @@ export interface ImpactReport {
   impacted: ImpactedNode[];
   /** Head-revision imports that resolved to nothing. Surfaced so silent gaps can't hide. */
   unresolved: UnresolvedImport[];
+  /** Non-fatal problems found while analyzing (e.g. duplicate workspace package names). */
+  warnings?: string[];
 }
 
 export interface TestPlanGroup {

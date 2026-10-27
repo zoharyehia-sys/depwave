@@ -134,6 +134,7 @@ export class AnalysisPipeline {
         globalTriggers: changeSet.globalTriggers,
         impacted: impacted.sort((a, b) => a.distance - b.distance || (a.id < b.id ? -1 : 1)),
         unresolved: after.unresolved,
+        ...(after.workspace.warnings?.length ? { warnings: after.workspace.warnings } : {}),
       },
       plan,
       stats: this.stats,

@@ -15,12 +15,13 @@ export const MARKER = '<!-- depwave-impact -->';
 export const MAX_BODY = 65_000;
 
 /**
- * The comment to update: the most recent one carrying the marker.
- * @param {ReadonlyArray<{ id: number; body?: string | null }>} comments
+ * The comment to update: the most recent BOT comment carrying the marker. A human quoting the report would otherwise
+ * be picked, and editing someone else's comment fails (403), which would silently suppress the report.
+ * @param {ReadonlyArray<{ id: number; body?: string | null; user?: { type?: string } | null }>} comments
  * @returns {{ id: number } | undefined}
  */
 export function findStickyComment(comments, marker = MARKER) {
-  return [...comments].reverse().find((c) => typeof c.body === 'string' && c.body.includes(marker));
+  return [...comments].reverse().find((c) => c.user?.type === 'Bot' && typeof c.body === 'string' && c.body.includes(marker));
 }
 
 /**

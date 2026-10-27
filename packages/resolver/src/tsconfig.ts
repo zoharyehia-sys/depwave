@@ -1,5 +1,5 @@
 import { NearestFile } from './nearest.js';
-import { dirOf, resolvePath } from './paths.js';
+import { dirOf, joinPath, resolvePath } from './paths.js';
 import { isObject, type Lookup, type VirtualFileSystem } from './vfs.js';
 
 /** compilerOptions that can change how a specifier resolves. Only these feed configHash. */
@@ -39,11 +39,19 @@ export interface TsConfig {
  * relative paths only; package-based extends live in node_modules, which isn't part of the repo), and per-option
  * "relative to the declaring file" rules.
  */
+/** Resolves a non-relative `extends` (`"@acme/tsconfig/base.json"`) to a repository path, or undefined. */
+export type ExtendsResolver = (specifier: string) => string | undefined;
+
+const CONFIG_DIR = '${configDir}';
+
 export class TsConfigLoader {
   private readonly nearest: NearestFile;
   private readonly loaded = new Map<string, TsConfig | undefined>();
 
-  constructor(private readonly fs: VirtualFileSystem) {
+  constructor(
+    private readonly fs: VirtualFileSystem,
+    private readonly resolveExtends: ExtendsResolver = () => undefined,
+  ) {
     this.nearest = new NearestFile(fs, ['tsconfig.json', 'jsconfig.json']);
   }
 
@@ -53,21 +61,26 @@ export class TsConfigLoader {
     return path === undefined ? undefined : this.load(path);
   }
 
-  load(path: string, chain: ReadonlySet<string> = new Set()): TsConfig | undefined {
-    if (!chain.has(path) && this.loaded.has(path)) return this.loaded.get(path);
+  /**
+   * `leafDir` is the directory of the config being resolved for. TypeScript 5.5's `${configDir}` in a shared base
+   * config means THAT directory, so the same base resolves differently per extending config (and is cached per leaf).
+   */
+  load(path: string, chain: ReadonlySet<string> = new Set(), leafDir: string = dirOf(path)): TsConfig | undefined {
+    const key = `${path}\u0000${leafDir}`;
+    if (!chain.has(path) && this.loaded.has(key)) return this.loaded.get(key);
     if (chain.has(path)) return undefined; // extends cycle
     const json = this.fs.readJson(path);
-    const config = json && this.build(path, json, new Set([...chain, path]));
-    this.loaded.set(path, config);
+    const config = json && this.build(path, json, new Set([...chain, path]), leafDir);
+    this.loaded.set(key, config);
     return config;
   }
 
-  private build(path: string, json: Record<string, unknown>, chain: ReadonlySet<string>): TsConfig {
+  private build(path: string, json: Record<string, unknown>, chain: ReadonlySet<string>, leafDir: string): TsConfig {
     const dir = dirOf(path);
     const config: TsConfig = { files: [path], resolutionOptions: {} };
 
     // Later entries of an `extends` array override earlier ones; the file itself overrides all of them.
-    for (const base of this.bases(dir, json['extends'], chain)) {
+    for (const base of this.bases(dir, json['extends'], chain, leafDir)) {
       config.files.push(...base.files);
       Object.assign(config.resolutionOptions, base.resolutionOptions);
       for (const key of ['baseUrl', 'paths', 'pathsBase', 'outDir', 'rootDir', 'customConditions'] as const) {
@@ -78,7 +91,10 @@ export class TsConfigLoader {
     const options = isObject(json['compilerOptions']) ? json['compilerOptions'] : {};
     for (const key of RESOLUTION_OPTIONS) if (options[key] !== undefined) config.resolutionOptions[key] = options[key];
 
-    const dirOption = (key: string): string | undefined => (typeof options[key] === 'string' ? resolvePath(dir, options[key]) : undefined);
+    /** A path option, relative to the declaring config, or to the leaf config through `${configDir}`. */
+    const resolveOption = (value: string): string | undefined =>
+      value.includes(CONFIG_DIR) ? resolvePath('', value.replaceAll(CONFIG_DIR, leafDir || '.')) : resolvePath(dir, value);
+    const dirOption = (key: string): string | undefined => (typeof options[key] === 'string' ? resolveOption(options[key]) : undefined);
     const baseUrl = dirOption('baseUrl');
     if (baseUrl !== undefined) config.baseUrl = baseUrl;
     const outDir = dirOption('outDir');
@@ -91,6 +107,11 @@ export class TsConfigLoader {
         Object.entries(options['paths']).map(([key, value]) => [key, Array.isArray(value) ? value.filter((v) => typeof v === 'string') : []]),
       );
       config.pathsBase = dir;
+      // `${configDir}` substitutions are absolute: rewrite them relative to whatever base the paths end up using.
+      if (Object.values(config.paths).some((subs) => subs.some((s) => s.includes(CONFIG_DIR)))) config.pathsBase = '';
+      config.paths = Object.fromEntries(
+        Object.entries(config.paths).map(([key, subs]) => [key, subs.map((s) => (s.includes(CONFIG_DIR) ? s.replaceAll(CONFIG_DIR, leafDir || '.') : config.pathsBase === '' ? joinPath(dir, s) : s))]),
+      );
     }
     // baseUrl wins as the paths base wherever it's declared in the chain.
     if (config.paths && config.baseUrl !== undefined) config.pathsBase = config.baseUrl;
@@ -101,13 +122,20 @@ export class TsConfigLoader {
     return config;
   }
 
-  private bases(dir: string, extendsField: unknown, chain: ReadonlySet<string>): TsConfig[] {
+  /**
+   * Relative `extends` resolve against the declaring config. Package `extends` (`"@acme/tsconfig/base.json"`) resolve
+   * through the workspace when the package lives in the repo; ones in node_modules can't be seen and are skipped.
+   */
+  private bases(dir: string, extendsField: unknown, chain: ReadonlySet<string>, leafDir: string): TsConfig[] {
     const entries = typeof extendsField === 'string' ? [extendsField] : Array.isArray(extendsField) ? extendsField : [];
     const bases: TsConfig[] = [];
     for (const entry of entries) {
-      if (typeof entry !== 'string' || !(entry.startsWith('./') || entry.startsWith('../'))) continue;
-      const target = resolvePath(dir, entry.endsWith('.json') ? entry : `${entry}.json`);
-      const base = target === undefined ? undefined : this.load(target, chain);
+      if (typeof entry !== 'string') continue;
+      const target =
+        entry.startsWith('./') || entry.startsWith('../')
+          ? resolvePath(dir, entry.endsWith('.json') ? entry : `${entry}.json`)
+          : this.resolveExtends(entry);
+      const base = target === undefined ? undefined : this.load(target, chain, leafDir);
       if (base) bases.push(base);
     }
     return bases;

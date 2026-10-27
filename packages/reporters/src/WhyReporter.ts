@@ -1,5 +1,7 @@
 import { Confidence, MODULE_SYMBOL, type Explanation, type ExplanationStep, type Granularity } from '@depwave/core';
 
+import { listPaths } from './triggers.js';
+
 export interface WhyContext {
   base: string;
   head: string;
@@ -57,7 +59,7 @@ function renderPath(explanation: Extract<Explanation, { kind: 'impacted' }>, ran
 function seedLabel(explanation: Extract<Explanation, { kind: 'impacted' }>): string {
   if (explanation.cause.kind === 'changed') return '◀ changed';
   const paths = explanation.cause.triggers.map((t) => t.path);
-  return paths.length > 0 ? `◀ selected because ${paths.join(', ')} changed` : '◀ selected by a global trigger';
+  return paths.length > 0 ? `◀ selected because ${listPaths(paths)} changed` : '◀ selected by a global trigger';
 }
 
 /** What the previous step does with this one, as a sentence fragment. */
@@ -80,7 +82,8 @@ function phrase(step: ExplanationStep): string {
     case 'DYNAMIC_IMPORT':
       return step.confidence === Confidence.certain ? `which dynamically imports ${name}` : `which may dynamically import ${name} (template import)`;
     case 'WILDCARD':
-      return `which may load any module of its package via import(expr), including ${name}`;
+      // Reasons: import(expr) / require(expr), a test that spawns processes, or a file depwave could not parse.
+      return `which may load or run any module of its package (dynamic import, spawned process, or unparsed code), including ${name}`;
     default:
       return `which depends on ${name}`;
   }

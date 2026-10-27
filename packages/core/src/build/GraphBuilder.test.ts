@@ -137,3 +137,29 @@ describe('globToRegExp', () => {
     expect(globToRegExp(pattern).test(path)).toBe(expected);
   });
 });
+
+describe('runtime dependencies (regressions from Vite)', () => {
+  const inv = (files: string[]): Inventory => ({ ...inventory(files), files: files.map((path) => ({ path, language: 'typescript' as const, contentHash: `h:${path}` })) });
+
+  it('a test that spawns processes depends on everything in its package; a non-test spawner does not', () => {
+    const { graph } = buildGraph({
+      inventory: inv(['app/cli.test.ts', 'app/build.ts', 'app/worker.test.ts']),
+      facts: new Map([
+        ['app/cli.test.ts', facts('app/cli.test.ts', [imp({ specifier: 'node:child_process' })])],
+        ['app/build.ts', facts('app/build.ts', [imp({ specifier: 'execa' })])],
+        ['app/worker.test.ts', facts('app/worker.test.ts', [imp({ specifier: 'node:worker_threads' })])],
+      ]),
+      resolver: resolver({}),
+    });
+    expect([...graph.wildcardDependents('pkg:app')].sort()).toEqual(['file:app/cli.test.ts', 'file:app/worker.test.ts']);
+  });
+
+  it('a file whose extraction crashed may depend on anything in its package', () => {
+    const { graph } = buildGraph({
+      inventory: inv(['lib/generated.ts']),
+      facts: new Map([['lib/generated.ts', { ...facts('lib/generated.ts'), failed: 'RangeError: Maximum call stack size exceeded' }]]),
+      resolver: resolver({}),
+    });
+    expect([...graph.wildcardDependents('pkg:lib')]).toEqual(['file:lib/generated.ts']);
+  });
+});

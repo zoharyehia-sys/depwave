@@ -5,6 +5,9 @@ import { languageFromPath, type FileFacts } from '@depwave/core';
 import { describe, expect, it } from 'vitest';
 import { isTestFile, loadFixtures } from '../../../test/support/fixtures.js';
 import { ASTParser, PARSER_VERSION } from './ASTParser.js';
+import { LanguageRegistry } from './LanguageRegistry.js';
+import { TypeScriptAdapter } from './languages/typescript/TypeScriptAdapter.js';
+import type { TreeSitterLanguageAdapter } from './treeSitter.js';
 
 const fixtures = await loadFixtures();
 const parser = new ASTParser();
@@ -39,7 +42,7 @@ describe('ASTParser over every fixture', () => {
         count++;
       }
     }
-    expect(count).toBe(66); // 12 + 14 + 11 + 13 + 8 (workspace inventory test) + 8 (instance-methods)
+    expect(count).toBe(76); // 12 + 14 + 11 + 13 + 8 (workspace inventory test) + 8 (instance-methods) + 10 (runtime-deps)
   });
 
   it('every test file imports what it tests', () => {
@@ -47,7 +50,9 @@ describe('ASTParser over every fixture', () => {
       for (const [path, facts] of files) {
         if (!isTestFile(path)) continue;
         expect(specifiers(facts), path).toContain('vitest');
-        expect(facts.imports.some((i) => i.specifier?.startsWith('./')), path).toBe(true);
+        // A test either imports what it tests, or reaches it at runtime (spawned process, fs): runtime-deps fixture.
+        const runtime = facts.imports.some((i) => ['node:child_process', 'node:fs'].includes(i.specifier ?? ''));
+        expect(runtime || facts.imports.some((i) => i.specifier?.startsWith('./')), path).toBe(true);
       }
     }
   });
@@ -146,5 +151,25 @@ describe('ASTParser contract', () => {
       null,
       null,
     ]);
+  });
+});
+
+describe('ASTParser crash isolation', () => {
+  it('a file whose extraction throws gets conservative empty facts; the other files are unaffected', async () => {
+    const throwing = new TypeScriptAdapter('typescript');
+    const original = throwing.extractFacts.bind(throwing);
+    throwing.extractFacts = (tree, source, path) => {
+      if (path === 'src/generated.ts') throw new RangeError('Maximum call stack size exceeded');
+      return original(tree, source, path);
+    };
+    const isolated = new ASTParser(new LanguageRegistry<TreeSitterLanguageAdapter>().register(throwing));
+
+    const out: FileFacts[] = [];
+    const input = (path: string, content: string) => ({ path, content, language: 'typescript' as const, contentHash: `h:${path}` });
+    for await (const f of isolated.extract([input('src/generated.ts', 'export const x = 1;'), input('src/ok.ts', "import { y } from './y';")])) out.push(f);
+
+    expect(out[0]).toMatchObject({ path: 'src/generated.ts', failed: 'RangeError: Maximum call stack size exceeded', imports: [], symbols: [], contentHash: 'h:src/generated.ts' });
+    expect(out[1]?.failed).toBeUndefined();
+    expect(out[1]?.imports.map((i) => i.specifier)).toEqual(['./y']);
   });
 });

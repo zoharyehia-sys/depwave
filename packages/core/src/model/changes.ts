@@ -20,7 +20,11 @@ export interface Hunk {
   newLines: number;
 }
 
-export type GlobalTriggerKind = 'lockfile' | 'tsconfig' | 'package-manifest' | 'ci-config' | 'custom';
+/**
+ * lockfile / ci-config / custom (workspace config): everything. tsconfig: everything under its directory.
+ * package-manifest: a package and its dependents. data-file: the tests of one package, which may read the file at runtime.
+ */
+export type GlobalTriggerKind = 'lockfile' | 'tsconfig' | 'package-manifest' | 'ci-config' | 'data-file' | 'custom';
 
 export interface GlobalTrigger {
   kind: GlobalTriggerKind;

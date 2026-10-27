@@ -25,6 +25,12 @@ export function resolveRelative(base: string, relative: string): string | undefi
   return segments.join('/');
 }
 
+/**
+ * Drops a leading UTF-8 byte-order mark. Editors on Windows add one; Node, npm and pnpm all ignore it, but
+ * `JSON.parse` rejects it, so every JSON file read from a repository goes through this first.
+ */
+export const stripBom = (text: string): string => (text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
+
 const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
 
 /** Default test-file convention: `*.test.*`, `*.spec.*`, or anything under `__tests__/`. */

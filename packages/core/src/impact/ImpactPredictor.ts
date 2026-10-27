@@ -55,9 +55,10 @@ export function predictImpact(graph: GraphView, seeds: readonly NodeId[], policy
       visit(edge.from, current, edge.confidence);
     }
 
-    // A file with `import(expr)` may load anything in its package: reaching any file there reaches it too.
+    // A file with `import(expr)` (or a spawning test) may load anything in its package: reaching any file there reaches
+    // it too. Test files are excluded as the trigger: production code and spawned binaries don't load tests.
     const node = graph.node(current.id);
-    if (policy.mode === 'conservative' && node?.kind === 'file') {
+    if (policy.mode === 'conservative' && node?.kind === 'file' && !node.isTest) {
       for (const dependent of graph.wildcardDependents(node.packageId ?? NO_PACKAGE)) visit(dependent, current, Confidence.heuristic);
     }
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeChanges } from '../diff/DiffAnalyzer.js';
+import { analyzeChanges, changedSymbols } from '../diff/DiffAnalyzer.js';
 import { DependencyGraph } from '../graph/DependencyGraph.js';
 import { Confidence, type GraphEdge } from '../model/graph.js';
 import { nodeId } from '../model/ids.js';
@@ -160,5 +160,69 @@ describe('selectTests', () => {
   it('flags runAll when a repo-wide trigger fired', () => {
     const plan = selectTests([], new DependencyGraph(), { seeds: [], globalTriggers: [{ kind: 'lockfile', path: 'pnpm-lock.yaml' }] }, workspace([]));
     expect(plan.runAll).toBe(true);
+  });
+});
+
+describe('analyzeChanges: changes no import expresses (regressions from tRPC and Vite)', () => {
+  const ws = workspace(['app', 'lib']);
+  const g = graph(['app/a.ts', 'app/a.test.ts', 'app/__tests__/cli.test.ts', 'lib/l.ts', 'lib/l.test.ts'], [], [
+    ['app', []],
+    ['lib', []],
+  ]);
+  const ctx = { base: g, head: g, baseWorkspace: ws, headWorkspace: ws };
+  const run = (...paths: string[]) => analyzeChanges(paths.map((path) => ({ status: 'M' as const, path })), ctx);
+
+  it.each(['.github/workflows/main.yml', '.github/actions/setup/action.yml', '.gitlab-ci.yml', '.nvmrc', '.node-version', '.tool-versions', '.bun-version', '.npmrc'])(
+    'tRPC: %s (CI / toolchain) affects every test',
+    (path) => {
+      const result = run(path);
+      expect(result.globalTriggers).toEqual([{ kind: 'ci-config', path }]);
+      expect(result.seeds).toHaveLength(5);
+    },
+  );
+
+  it('a toolchain pin only counts at the repository root', () => {
+    expect(run('app/.nvmrc').globalTriggers[0]?.kind).toBe('data-file');
+  });
+
+  it('Vite: a data file no code imports selects the tests of its package only', () => {
+    expect(run('app/templates/vanilla/package.json')).toEqual({
+      seeds: [nodeId.file('app/__tests__/cli.test.ts'), nodeId.file('app/a.test.ts')],
+      globalTriggers: [{ kind: 'data-file', path: 'app/templates/vanilla/package.json', scope: ['pkg:app'] }],
+    });
+  });
+
+  it('a snapshot maps to exactly its own test', () => {
+    expect(run('lib/__snapshots__/l.test.ts.snap')).toEqual({ seeds: [nodeId.file('lib/l.test.ts')], globalTriggers: [] });
+  });
+
+  it.each(['app/README.md', 'docs/guide.md', 'CHANGELOG.md', 'LICENSE', '.gitignore', '.vscode/settings.json', '.github/ISSUE_TEMPLATE/bug.yml', 'renovate.json'])(
+    '%s selects nothing',
+    (path) => {
+      expect(run(path)).toEqual({ seeds: [], globalTriggers: [] });
+    },
+  );
+
+  it('…unless it sits in a test data directory (a Markdown processor reads fixtures/*.md)', () => {
+    expect(run('lib/fixtures/input.md').globalTriggers).toEqual([{ kind: 'data-file', path: 'lib/fixtures/input.md', scope: ['pkg:lib'] }]);
+  });
+
+  it('a file whose extraction crashed always counts as wholly changed', () => {
+    const facts = (failed?: string) => ({
+      path: 'app/a.ts',
+      language: 'typescript' as const,
+      contentHash: failed ?? 'h',
+      parserVersion: 't',
+      imports: [],
+      exports: [],
+      symbols: [],
+      references: [],
+      hasSideEffects: false,
+      moduleHash: '',
+      parseErrors: 0,
+      ...(failed ? { failed } : {}),
+    });
+    expect(changedSymbols('app/a.ts', facts(), facts())).toEqual([]);
+    expect(changedSymbols('app/a.ts', facts('RangeError: Maximum call stack size exceeded'), facts())).toBeUndefined();
   });
 });

@@ -1,0 +1,68 @@
+{
+  "$schema": "../expected-impact.schema.json",
+  "description": "Dependencies no import expresses: a test that spawns the CLI, a test that reads a template with fs, a snapshot file, an import.meta.glob plugin loader, and a toolchain pin. Regressions from running depwave on Vite and tRPC.",
+  "policy": "conservative",
+  "scenarios": [
+    {
+      "name": "source-change-via-spawn",
+      "description": "cli.test.ts runs src/index.ts as a process: it may run any file of its package.",
+      "changes": [{ "op": "modify", "path": "packages/cli/src/index.ts", "find": "created ", "replace": "made " }],
+      "expected": { "file": { "impactedTests": ["packages/cli/__tests__/cli.test.ts"] } }
+    },
+    {
+      "name": "template-data-change",
+      "description": "A JSON template no code imports, read by a test with fs: every test of its package runs.",
+      "changes": [{ "op": "modify", "path": "packages/cli/templates/config.json", "find": "\"none\"", "replace": "\"vanilla\"" }],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "packages/cli/__tests__/cli.test.ts",
+            "packages/cli/__tests__/templates.test.ts",
+            "packages/cli/src/format.test.ts",
+            "packages/cli/src/plugins/load.test.ts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "snapshot-change",
+      "description": "A snapshot maps to exactly its own test.",
+      "changes": [{ "op": "modify", "path": "packages/cli/src/__snapshots__/format.test.ts.snap", "find": "\"my app\"", "replace": "\"my-app\"" }],
+      "expected": { "file": { "impactedTests": ["packages/cli/src/format.test.ts"] } }
+    },
+    {
+      "name": "glob-plugin-change",
+      "description": "import.meta.glob('./builtin/*.ts') loads a.ts; the spawning cli.test also covers the package.",
+      "changes": [{ "op": "modify", "path": "packages/cli/src/plugins/builtin/a.ts", "find": "'a'", "replace": "'alpha'" }],
+      "expected": { "file": { "impactedTests": ["packages/cli/__tests__/cli.test.ts", "packages/cli/src/plugins/load.test.ts"] } }
+    },
+    {
+      "name": "toolchain-pin",
+      "description": "A Node version bump changes the environment of every test.",
+      "changes": [{ "op": "modify", "path": ".nvmrc", "find": "22", "replace": "24" }],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "packages/cli/__tests__/cli.test.ts",
+            "packages/cli/__tests__/templates.test.ts",
+            "packages/cli/src/format.test.ts",
+            "packages/cli/src/plugins/load.test.ts",
+            "packages/other/src/x.test.ts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "docs-change",
+      "description": "Documentation outside test-data directories selects nothing.",
+      "changes": [{ "op": "modify", "path": "packages/cli/README.md", "find": "Scaffolds", "replace": "Creates" }],
+      "expected": { "file": { "impactedTests": [] } }
+    },
+    {
+      "name": "other-package-change",
+      "description": "The spawning test's wildcard is scoped to its own package.",
+      "changes": [{ "op": "modify", "path": "packages/other/src/x.ts", "find": "return 1;", "replace": "return 2;" }],
+      "expected": { "file": { "impactedTests": ["packages/other/src/x.test.ts"] } }
+    }
+  ]
+}

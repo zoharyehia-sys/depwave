@@ -42,8 +42,35 @@ export class GitService implements GitPort {
     return this.rootDir;
   }
 
+  /**
+   * The two most common first-run failures get actionable messages instead of raw git output: a base ref that isn't
+   * fetched, and a shallow clone (CI's default `fetch-depth: 1`) where the histories don't meet.
+   */
   async mergeBase(a: Revision, b: Revision): Promise<string> {
-    return (await this.git(['merge-base', commitish(a), commitish(b)])).trim();
+    const args = ['merge-base', commitish(a), commitish(b)];
+    try {
+      return (await this.git(args)).trim();
+    } catch (error) {
+      if (!(error instanceof GitError)) throw error;
+      for (const rev of [a, b]) {
+        if (rev !== WORKTREE && !(await this.exists(rev))) {
+          throw new GitError(args, error.exitCode, `fatal: revision '${rev}' not found. Fetch it first (e.g. git fetch origin main) or pass another --base.\n${error.stderr}`);
+        }
+      }
+      if ((await this.git(['rev-parse', '--is-shallow-repository'])).trim() === 'true') {
+        throw new GitError(args, error.exitCode, `fatal: no merge base between '${a}' and '${b}' in this shallow clone. Fetch full history (actions/checkout with fetch-depth: 0, or git fetch --unshallow).\n${error.stderr}`);
+      }
+      throw new GitError(args, error.exitCode, `fatal: '${a}' and '${b}' have no common history.\n${error.stderr}`);
+    }
+  }
+
+  private async exists(rev: Revision): Promise<boolean> {
+    try {
+      await this.git(['rev-parse', '--verify', '--quiet', '--end-of-options', `${rev}^{commit}`]);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async resolveRevision(rev: Revision): Promise<string> {

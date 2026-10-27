@@ -54,10 +54,11 @@ export class ImpactCommand extends Command {
   });
 
   async execute(): Promise<number> {
+    let closeCache = (): void => {};
     try {
       const pipeline = await createPipeline(this.cwd ?? process.cwd(), { cache: this.cache, granularity: this.granularity });
+      closeCache = () => pipeline.deps.cache?.close();
       const { report, plan, stats, graph } = await pipeline.impact({ base: this.base, head: this.head });
-      pipeline.deps.cache?.close();
       if (stats.cacheWarning) this.context.stderr.write(`depwave: warning: ${stats.cacheWarning}\n`);
       const explanations = this.format === 'markdown' && !plan.runAll ? explainTopTests(report, plan, graph, this.explain) : [];
       this.context.stdout.write(REPORTERS[this.format](explanations).render(report, plan));
@@ -66,6 +67,8 @@ export class ImpactCommand extends Command {
       // Users get one clear line, not a stack trace. The exit code tells CI what kind of failure it was.
       this.context.stderr.write(`depwave: ${error instanceof Error ? error.message : String(error)}\n`);
       return error instanceof NotImplementedError ? EXIT_NOT_IMPLEMENTED : EXIT_FAILURE;
+    } finally {
+      closeCache(); // also on errors: Windows keeps open SQLite files locked
     }
   }
 }

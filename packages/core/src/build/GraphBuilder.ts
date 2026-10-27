@@ -9,7 +9,20 @@ import type { ResolverPort } from '../ports/resolver.js';
 import { ReExportResolver } from './ReExportResolver.js';
 
 /** Bump whenever linking output can change for the same inputs: it's part of every snapshot cache key. */
-export const GRAPH_VERSION = 3;
+export const GRAPH_VERSION = 4;
+
+/** Modules that start processes or workers: a test using them can execute any file of its package. */
+const SPAWN_MODULES = new Set([
+  'child_process',
+  'node:child_process',
+  'worker_threads',
+  'node:worker_threads',
+  'execa',
+  'tinyexec',
+  'cross-spawn',
+  'zx',
+  'nano-spawn',
+]);
 
 export interface GraphBuildInput {
   inventory: Inventory;
@@ -79,6 +92,7 @@ class Linker {
     for (const file of this.input.inventory.files) {
       const facts = this.input.facts.get(file.path);
       if (facts) this.linkFile(file.path, facts);
+      if (facts) this.linkRuntimeDependencies(file.path, facts);
     }
     return { graph: this.graph, unresolved: this.unresolved };
   }
@@ -126,6 +140,19 @@ class Linker {
       if (fact.from === undefined) continue;
       this.linkSpecifier(path, from, fact.from, 'RE_EXPORTS', fact.typeOnly);
     }
+  }
+
+  /**
+   * Dependencies no import expresses. A test that spawns processes (`child_process`, `execa`, …) can run any code of
+   * its package (a CLI test runs the package's bin), and a file whose extraction crashed may import anything: both get
+   * the "may load anything in its package" wildcard that `import(expr)` gets.
+   */
+  private linkRuntimeDependencies(path: string, facts: FileFacts): void {
+    const spawns = this.isTestFile(path) && facts.imports.some((i) => i.specifier !== undefined && SPAWN_MODULES.has(i.specifier));
+    if (!spawns && facts.failed === undefined) return;
+    const fileId = nodeId.file(path);
+    const node = this.graph.node(fileId);
+    this.graph.addWildcardDependency((node?.kind === 'file' && node.packageId) || NO_PACKAGE, fileId);
   }
 
   // ─── symbol granularity ──────────────────────────────────────────────────────
