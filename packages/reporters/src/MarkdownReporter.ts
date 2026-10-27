@@ -1,4 +1,5 @@
 import type { Explanation, ImpactReport, Reporter, TestPlan } from '@depwave/core';
+import { groupTriggers, listPaths } from './triggers.js';
 import { renderWhy } from './WhyReporter.js';
 
 /** Hidden marker that identifies depwave's comment, so CI edits it in place instead of posting a new one per push. */
@@ -31,8 +32,9 @@ export class MarkdownReporter implements Reporter {
       '',
     );
 
-    for (const trigger of report.globalTriggers) {
-      lines.push(`> [!NOTE]`, `> \`${trigger.path}\` changed (${trigger.kind}): ${triggerReach(trigger)}.`, '');
+    for (const { sample, paths } of groupTriggers(report.globalTriggers)) {
+      const changed = listPaths(paths, 3, (p) => `\`${p}\``);
+      lines.push(`> [!NOTE]`, `> ${changed} changed (${sample.kind}): ${triggerReach(sample)}.`, '');
     }
 
     for (const warning of report.warnings ?? []) lines.push('> [!WARNING]', `> ${warning}`, '');
