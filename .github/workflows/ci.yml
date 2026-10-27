@@ -51,3 +51,29 @@ jobs:
           name: depwave-impact-${{ matrix.os }}
           path: depwave-impact.json
           if-no-files-found: ignore
+
+  # Paths with spaces and non-ASCII characters break naive quoting, URL conversion and `-z`-less git parsing.
+  # The maintainer's own checkout has a Hebrew path; this keeps CI honest about it.
+  unusual-path:
+    name: check (path with spaces + Hebrew)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ws dir/שלום/depwave
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: ws dir/שלום/depwave
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: ws dir/שלום/depwave/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: ws dir/שלום/depwave/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm build
+      - run: node packages/cli/dist/bin.js impact --base HEAD~1 --head HEAD

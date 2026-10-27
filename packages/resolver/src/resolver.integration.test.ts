@@ -2,7 +2,7 @@
  * ModuleResolver against real git repositories built from the fixtures, this repository itself,
  * a probe-soundness property, and oxc-resolver as a differential oracle.
  */
-import { existsSync, mkdirSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, symlinkSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WORKTREE, type ResolutionResult, type Workspace } from '@depwave/core';
@@ -186,7 +186,7 @@ describe('differential oracle: oxc-resolver on the same files, checked out and "
     linkWorkspace(env.repo.dir, env.workspace);
     const ours = await ModuleResolver.load(env.git, env.commit, env.workspace);
 
-    const toRepoPath = (abs: string) => relative(env.repo.dir, abs).split(sep).join('/');
+    const toRepoPath = (abs: string) => relative(realpathSync.native(env.repo.dir), realpathSync.native(abs)).split(sep).join('/');
     let compared = 0;
     for (const { from, specifier } of importsOf(f)) {
       const mine = ours.resolve(from, specifier);
@@ -199,7 +199,9 @@ describe('differential oracle: oxc-resolver on the same files, checked out and "
         // Third-party: never a file of the fixture itself. (oxc may still find it in an ancestor node_modules,
         // e.g. when the temp dir sits inside a checkout, as on CI runners.)
         if (theirs.path !== undefined) {
-          const rel = relative(env.repo.dir, theirs.path); // absolute when on another drive (Windows CI)
+          // Compare real paths: oxc returns realpaths, while temp dirs can be 8.3 short names (Windows) or symlinks (macOS).
+          // relative() is absolute when the two sit on different drives (Windows CI: temp on C:, checkout on D:).
+          const rel = relative(realpathSync.native(env.repo.dir), realpathSync.native(theirs.path));
           expect(rel.startsWith('..') || isAbsolute(rel), `${label} resolved inside the fixture: ${rel}`).toBe(true);
         }
       } else {
