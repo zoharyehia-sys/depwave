@@ -47,17 +47,25 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: pnpm/action-setup@v4
-      with:
-        package_json_file: ${{ github.action_path }}/package.json
     - uses: actions/setup-node@v4
       with:
         node-version: 22
 
+    # pnpm via Node's bundled corepack, shimmed into a private directory: uses depwave's own pinned
+    # `packageManager` version and never touches (or clashes with) a pnpm the calling workflow set up.
     - name: Build depwave
       shell: bash
       working-directory: ${{ github.action_path }}
-      run: pnpm install --frozen-lockfile && pnpm build
+      env:
+        COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+      run: |
+        set -euo pipefail
+        SHIM="$RUNNER_TEMP/depwave-pnpm"
+        mkdir -p "$SHIM"
+        corepack enable --install-directory "$SHIM" pnpm
+        export PATH="$SHIM:$PATH"
+        pnpm install --frozen-lockfile
+        TURBO_TELEMETRY_DISABLED=1 pnpm build
 
     - name: Analyze the pull request
       id: analyze
