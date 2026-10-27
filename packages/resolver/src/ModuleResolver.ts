@@ -72,7 +72,7 @@ export class ModuleResolver implements ResolverPort {
     private readonly workspace: Workspace,
     options: ModuleResolverOptions = {},
   ) {
-    this.tsconfigs = new TsConfigLoader(fs);
+    this.tsconfigs = new TsConfigLoader(fs, (specifier) => this.workspaceConfigPath(specifier));
     this.packageJsons = new NearestFile(fs, ['package.json']);
     this.packages = [...workspace.packages].sort((a, b) => b.name.length - a.name.length);
     this.conditions = options.conditions ?? DEFAULT_CONDITIONS;
@@ -113,10 +113,27 @@ export class ModuleResolver implements ResolverPort {
 
   // ─── strategies ──────────────────────────────────────────────────────────────
 
+  /**
+   * As written first; if that fails and there's a `?`, again without the query. Bundler queries
+   * (`./worker.js?worker`, `./a.css?inline`, `./b.wasm?init`) name the same file, but `#imports` keys may contain a
+   * literal `?` (`"#question?mark"`), so the query is only dropped as a fallback. Both attempts' probes are recorded.
+   */
   private resolveSpecifier(lookup: Lookup, from: string, specifier: string): Outcome {
-    if (specifier === '' || specifier.startsWith('/') || /^[a-z][a-z0-9+.-]*:/i.test(specifier) && !specifier.startsWith('node:')) {
-      return unresolved('unsupported-syntax'); // absolute paths and URLs (data:, http:, file:)
+    const exact = this.resolveExact(lookup, from, specifier);
+    const query = specifier.indexOf('?');
+    if (exact.kind !== 'unresolved' || query <= 0) return exact;
+    const withoutQuery = this.resolveExact(lookup, from, specifier.slice(0, query));
+    return withoutQuery.kind === 'unresolved' ? exact : withoutQuery;
+  }
+
+  private resolveExact(lookup: Lookup, from: string, specifier: string): Outcome {
+    const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(specifier)?.[1]?.toLowerCase();
+    if (scheme !== undefined && scheme !== 'node' && !(scheme.length === 1 && /^[a-z]:[\\/]/i.test(specifier))) {
+      if (scheme === 'file') return unresolved('unsupported-syntax'); // absolute filesystem URL
+      // Virtual modules (`virtual:`, `astro:`, `bun:`, `cloudflare:`) and URL imports are provided outside the repo.
+      return { kind: 'external', packageName: `${scheme}:`, specifier };
     }
+    if (specifier === '' || specifier.startsWith('/') || /^[a-z]:[\\/]/i.test(specifier)) return unresolved('unsupported-syntax'); // absolute paths
     if (specifier.startsWith('node:') || BUILTINS.has(specifier)) {
       return { kind: 'external', packageName: specifier.startsWith('node:') ? specifier : `node:${specifier}`, specifier };
     }
@@ -135,7 +152,7 @@ export class ModuleResolver implements ResolverPort {
       if (viaBaseUrl !== undefined) return file(viaBaseUrl);
     }
     if (specifier.startsWith('#')) return this.packageImports(lookup, from, specifier, conditions);
-    return this.workspacePackage(lookup, specifier, conditions) ?? { kind: 'external', packageName: packageNameOf(specifier), specifier };
+    return this.workspacePackage(lookup, from, specifier, conditions) ?? { kind: 'external', packageName: packageNameOf(specifier), specifier };
   }
 
   /** tsconfig `paths`: an exact key wins, else the pattern with the longest prefix; substitutions tried in order. */
@@ -184,8 +201,8 @@ export class ModuleResolver implements ResolverPort {
     return unresolved('not-found');
   }
 
-  private workspacePackage(lookup: Lookup, specifier: string, conditions: readonly string[]): Outcome | undefined {
-    const pkg = this.packages.find((p) => specifier === p.name || specifier.startsWith(`${p.name}/`));
+  private workspacePackage(lookup: Lookup, from: string, specifier: string, conditions: readonly string[]): Outcome | undefined {
+    const pkg = this.packageFor(from, specifier);
     if (!pkg) return undefined;
     const subpath = specifier === pkg.name ? '.' : `.${specifier.slice(pkg.name.length)}`;
     const manifest = pkg.manifestPath.endsWith('package.json') ? this.fs.readJson(pkg.manifestPath) : undefined;
@@ -204,6 +221,34 @@ export class ModuleResolver implements ResolverPort {
       found = this.fileOrDirectory(lookup, resolvePath(pkg.root, subpath));
     }
     return found === undefined ? unresolved('not-found') : file(found);
+  }
+
+  /** `"@acme/tsconfig/base.json"` (or `"@acme/tsconfig"` → its tsconfig.json) in a workspace package. */
+  private workspaceConfigPath(specifier: string): string | undefined {
+    const pkg = this.packages.find((p) => specifier === p.name || specifier.startsWith(`${p.name}/`));
+    if (!pkg) return undefined;
+    const subpath = specifier === pkg.name ? 'tsconfig.json' : specifier.slice(pkg.name.length + 1);
+    const path = resolvePath(pkg.root, subpath.endsWith('.json') ? subpath : `${subpath}.json`);
+    return path !== undefined && this.fs.isFile(path) ? path : undefined;
+  }
+
+  /**
+   * The workspace package a bare specifier names: the longest matching name; among packages sharing that name
+   * (pnpm allows it), the one whose root shares the longest directory prefix with the importer.
+   */
+  private packageFor(from: string, specifier: string): WorkspacePackage | undefined {
+    const first = this.packages.find((p) => specifier === p.name || specifier.startsWith(`${p.name}/`));
+    if (!first) return undefined;
+    const sameName = this.packages.filter((p) => p.name === first.name);
+    if (sameName.length === 1) return first;
+    const shared = (root: string) => {
+      const a = root.split('/');
+      const b = from.split('/');
+      let n = 0;
+      while (n < a.length && n < b.length && a[n] === b[n]) n++;
+      return n;
+    };
+    return sameName.reduce((best, p) => (shared(p.root) > shared(best.root) ? p : best));
   }
 
   /** Package targets in priority order: any that exists as-is wins; otherwise map build outputs back to sources. */
@@ -228,9 +273,12 @@ export class ModuleResolver implements ResolverPort {
   /** dist/x.js → src/x (extension probing follows). tsconfig outDir/rootDir first, then conventional names. */
   private sourceCandidates(lookup: Lookup, pkg: WorkspacePackage, target: string): string[] {
     const config = this.tsconfigs.forDir(pkg.root, lookup);
+    // Without an explicit rootDir, TypeScript uses the inputs' common directory: usually src/, sometimes the package
+    // root (dist/src/index.js ← src/index.ts). Try both, src/ first.
+    const sourceDirs = config?.rootDir !== undefined ? [config.rootDir] : [joinPath(pkg.root, 'src'), pkg.root];
     const mappings: Array<[outDir: string, sourceDir: string]> = [];
-    if (config?.outDir !== undefined) mappings.push([config.outDir, config.rootDir ?? joinPath(pkg.root, 'src')]);
-    for (const out of OUTPUT_DIRS) mappings.push([joinPath(pkg.root, out), joinPath(pkg.root, 'src')]);
+    if (config?.outDir !== undefined) for (const source of sourceDirs) mappings.push([config.outDir, source]);
+    for (const out of OUTPUT_DIRS) for (const source of [joinPath(pkg.root, 'src'), pkg.root]) mappings.push([joinPath(pkg.root, out), source]);
 
     const candidates: string[] = [];
     for (const [outDir, sourceDir] of mappings) {

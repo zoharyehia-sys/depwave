@@ -17,6 +17,8 @@ export interface Workspace {
   tools: WorkspaceTool[];
   /** Sorted by root. */
   packages: WorkspacePackage[];
+  /** Non-fatal oddities found while discovering (e.g. two packages sharing a name). Surfaced in reports. */
+  warnings?: string[];
 }
 
 export interface SourceFile {

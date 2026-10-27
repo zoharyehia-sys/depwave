@@ -20,6 +20,14 @@ export interface DiffContext {
 
 const LOCKFILES = new Set(['pnpm-lock.yaml', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'bun.lock', 'bun.lockb']);
 const WORKSPACE_CONFIGS = new Set(['pnpm-workspace.yaml', 'nx.json', 'turbo.json', 'lerna.json', 'depwave.config.json']);
+/** CI definitions and toolchain pins: they change the environment every test runs in (a Node or Bun bump breaks tests). */
+const CI_PATH = /^(\.github\/(workflows|actions)\/|\.circleci\/|\.buildkite\/|\.gitlab-ci\.yml$|azure-pipelines\.ya?ml$|Jenkinsfile$|bitbucket-pipelines\.yml$)/;
+const TOOLCHAIN_PINS = new Set(['.nvmrc', '.node-version', '.tool-versions', '.bun-version', '.npmrc', '.yarnrc.yml', '.pnpmfile.cjs', 'rust-toolchain', 'rust-toolchain.toml']);
+/** Changed files that can't affect a test run, unless they sit in a test data directory. */
+const NOT_DATA = /(\.(md|mdx|markdown|rst|adoc)$|^(license|licence|notice|changelog|authors|codeowners|contributing|security)(\.[a-z]+)?$|^\.(gitignore|gitattributes|editorconfig|prettierignore|eslintignore|mailmap)$|^\.prettierrc|^\.markdownlint|^renovate\.json5?$)/i;
+const NOT_DATA_DIR = /^(\.vscode|\.idea|\.changeset|\.husky|docs?)(\/|$)|^\.github\//;
+const TEST_DATA_DIR = /(^|\/)(__fixtures__|fixtures?|__tests__|tests?|testdata|__snapshots__|__mocks__)\//;
+
 /** Config files that change how everything under their directory compiles or runs. */
 const DIRECTORY_CONFIG = /^(tsconfig.*\.json|jsconfig.*\.json|(vitest|vite|jest)\.(config|workspace)\.[cm]?[jt]s|babel\.config\.[cm]?js|\.babelrc(\.json)?)$/;
 
@@ -65,11 +73,16 @@ export function analyzeChanges(changes: readonly FileChange[], ctx: DiffContext)
     for (const path of change.oldPath === undefined ? [change.path] : [change.path, change.oldPath]) {
       if (!changed) seedWholeFile(path);
 
-      const trigger = classify(path, ctx);
+      const trigger = classify(path, ctx) ?? dataFileTrigger(path, ctx, (test) => seeds.add(nodeId.file(test)));
       if (!trigger) continue;
       triggers.push(trigger);
       if (trigger.scope === undefined) {
         seedFilesWhere(() => true);
+      } else if (trigger.kind === 'data-file') {
+        const scope = new Set(trigger.scope);
+        for (const graph of [ctx.head, ctx.base]) {
+          for (const pkg of scope) for (const file of graph.filesOf(pkg)) if (file.isTest) seeds.add(file.id);
+        }
       } else if (trigger.kind === 'package-manifest') {
         const scope = new Set(trigger.scope);
         for (const graph of [ctx.head, ctx.base]) {
@@ -89,7 +102,8 @@ export function analyzeChanges(changes: readonly FileChange[], ctx: DiffContext)
  * (facts missing on a side, or top-level code changed).
  */
 export function changedSymbols(path: string, before: FileFacts | undefined, after: FileFacts | undefined): NodeId[] | undefined {
-  if (!before || !after || before.moduleHash !== after.moduleHash) return undefined;
+  // Missing or crashed facts, or changed top-level code: the whole file counts as changed.
+  if (!before || !after || before.failed !== undefined || after.failed !== undefined || before.moduleHash !== after.moduleHash) return undefined;
   const old = new Map(before.symbols.map((s) => [s.name, s]));
   const now = new Map(after.symbols.map((s) => [s.name, s]));
   const differs = (a: SymbolFact | undefined, b: SymbolFact | undefined) => !a || !b || a.bodyHash !== b.bodyHash || a.exported !== b.exported;
@@ -104,6 +118,7 @@ function classify(path: string, ctx: DiffContext): GlobalTrigger | undefined {
   const dir = dirOf(path);
 
   if (LOCKFILES.has(name)) return { kind: 'lockfile', path };
+  if (CI_PATH.test(path) || (dir === '' && TOOLCHAIN_PINS.has(name))) return { kind: 'ci-config', path };
   if (dir === '' && WORKSPACE_CONFIGS.has(name)) return { kind: 'custom', path };
   if (path === 'package.json') return { kind: 'package-manifest', path };
 
@@ -117,6 +132,32 @@ function classify(path: string, ctx: DiffContext): GlobalTrigger | undefined {
     return { kind: name.startsWith('tsconfig') || name.startsWith('jsconfig') ? 'tsconfig' : 'custom', path, scope: packages.length > 0 ? packages : [NO_PACKAGE] };
   }
   return undefined;
+}
+
+/**
+ * A changed file no import reaches (JSON/text fixtures, templates, snapshots, images) may still be read by tests at
+ * runtime, which no static graph can see. A Jest/Vitest snapshot maps to its own test exactly; any other such file
+ * selects the tests of its package. Documentation and editor/lint config outside test-data directories select nothing.
+ */
+function dataFileTrigger(path: string, ctx: DiffContext, seedTest: (testPath: string) => void): GlobalTrigger | undefined {
+  const id = nodeId.file(path);
+  if (ctx.head.node(id) || ctx.base.node(id)) return undefined; // source or imported: the graph already covers it
+
+  const snapshot = /^(.*)\/__snapshots__\/([^/]+)\.snap$/.exec(path);
+  if (snapshot) {
+    const test = `${snapshot[1]}/${snapshot[2]}`;
+    if (ctx.head.node(nodeId.file(test)) || ctx.base.node(nodeId.file(test))) {
+      seedTest(test);
+      return undefined;
+    }
+  }
+
+  const name = baseNameOf(path);
+  if (!TEST_DATA_DIR.test(path) && (NOT_DATA.test(name) || NOT_DATA_DIR.test(path))) return undefined;
+  const owner = [...ctx.headWorkspace.packages, ...ctx.baseWorkspace.packages]
+    .filter((p) => isWithin(path, p.root))
+    .sort((a, b) => b.root.length - a.root.length)[0];
+  return { kind: 'data-file', path, scope: [owner ? nodeId.package(owner.name) : NO_PACKAGE] };
 }
 
 /** `pkg` plus every package that depends on it, directly or transitively, in either graph. */

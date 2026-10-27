@@ -1,6 +1,7 @@
 import type { LanguageId } from '@depwave/core';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadTreeSitter, type TreeSitterRuntime } from '../../treeSitter.js';
+import { simplifyGlob } from './extract.js';
 import { TypeScriptAdapter, type JsLikeLanguage } from './TypeScriptAdapter.js';
 
 let runtime: TreeSitterRuntime;
@@ -378,5 +379,31 @@ describe('moduleHash', () => {
     ['a directive', `'use strict';\n${base}`],
   ])('changes when %s changes', (_label, changed) => {
     expect(hash(changed)).not.toBe(hash(base));
+  });
+});
+
+describe('glob imports (Vite import.meta.glob, webpack require.context)', () => {
+  it('turns relative globs into dynamic glob imports, skipping negations', () => {
+    expect(
+      imports(`
+        export const pages = import.meta.glob('./pages/**/*.tsx');
+        export const many = import.meta.glob(['./a/*.ts', '!./a/skip.ts', './b/{x,y}.ts'], { eager: true });
+        export const icons = require.context('./icons/', true, /\\.svg$/);
+        export const aliased = import.meta.glob('/src/**/*.ts');
+      `),
+    ).toEqual([
+      { kind: 'dynamic', pattern: './pages/*.tsx', bindings: [], from: 'pages' },
+      { kind: 'dynamic', pattern: './a/*.ts', bindings: [], from: 'many' },
+      { kind: 'dynamic', pattern: './b/*', bindings: [], from: 'many' },
+      { kind: 'dynamic', pattern: './icons/*', bindings: [], from: 'icons' },
+      { kind: 'dynamic', bindings: [], from: 'aliased' }, // not relative: fully dynamic, widens to the package
+    ]);
+  });
+
+  it('simplifyGlob only ever widens', () => {
+    expect(simplifyGlob('./x/**/*.ts')).toBe('./x/*.ts');
+    expect(simplifyGlob('./x/{a,b}/*.ts')).toBe('./x/*');
+    expect(simplifyGlob('./x/[ab].ts')).toBe('./x/*');
+    expect(simplifyGlob('./x/file?.ts')).toBe('./x/file*');
   });
 });

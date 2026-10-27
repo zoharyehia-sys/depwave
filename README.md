@@ -23,6 +23,23 @@ depwave impact --base main --head WORKTREE --format json
 - `--cwd <dir>` analyzes another repository. `--no-cache` bypasses the cache.
 - Exit codes: `0` ok, `1` analysis failed (one-line message on stderr), `2` not implemented.
 
+## What selects which tests
+
+Code changes follow the import graph (symbol by symbol). Changes no import can express follow these rules, all
+conservative: when depwave can't see a dependency, it runs more tests, never fewer.
+
+| Change | Selects |
+|---|---|
+| Lockfile, root `package.json`, workspace config, `depwave.config.json` | every test |
+| CI definitions (`.github/workflows/`, `.gitlab-ci.yml`, …) and toolchain pins (`.nvmrc`, `.node-version`, `.tool-versions`, `.bun-version`, `.npmrc`) | every test: they change the environment tests run in |
+| A `tsconfig*.json` / test-runner / Babel config | everything under its directory |
+| A workspace package's `package.json` | that package and every package that depends on it |
+| A file no code imports (JSON/text fixtures, templates, images) | the tests of its package: they may read it at runtime |
+| `__snapshots__/x.test.ts.snap` | exactly `x.test.ts` |
+| Docs and editor/lint config (`*.md`, LICENSE, `.vscode/`, …) outside test-data dirs | nothing |
+| `import(expr)`, a test that spawns processes (`child_process`, `execa`, …), a file depwave can't parse | "may load anything in its package" |
+| `import.meta.glob('./x/*.ts')`, `require.context(…)`, `` import(`./x/${n}.ts`) `` | every matching file |
+
 ## Explain a result: `depwave why`
 
 ```bash

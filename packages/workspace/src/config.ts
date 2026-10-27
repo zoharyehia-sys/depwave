@@ -1,4 +1,4 @@
-import type { GitPort, Revision } from '@depwave/core';
+import { stripBom, type GitPort, type Revision } from '@depwave/core';
 import picomatch from 'picomatch';
 import { WorkspaceError } from './WorkspaceDiscovery.js';
 
@@ -19,7 +19,7 @@ export async function loadConfig(git: GitPort, rev: Revision, trackedPaths: Read
 
   let raw: unknown;
   try {
-    raw = JSON.parse(text);
+    raw = JSON.parse(stripBom(text));
   } catch (error) {
     throw new WorkspaceError(CONFIG_FILE, `invalid JSON (${(error as Error).message})`);
   }

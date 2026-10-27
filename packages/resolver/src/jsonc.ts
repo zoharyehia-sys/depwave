@@ -1,9 +1,11 @@
+import { stripBom } from '@depwave/core';
+
 /**
- * Parses JSON with comments and trailing commas (tsconfig.json flavour). String contents are never touched,
+ * Parses JSON with comments (and a leading BOM) and trailing commas (tsconfig.json flavour). String contents are never touched,
  * so `"//"` or `",}"` inside strings survive.
  */
 export function parseJsonc(text: string): unknown {
-  return JSON.parse(removeTrailingCommas(stripComments(text)));
+  return JSON.parse(removeTrailingCommas(stripComments(stripBom(text))));
 }
 
 function stripComments(text: string): string {

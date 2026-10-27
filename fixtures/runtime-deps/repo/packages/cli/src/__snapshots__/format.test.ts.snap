@@ -1,0 +1,3 @@
+// Vitest Snapshot v1
+
+exports[`formats 1`] = `"my app"`;

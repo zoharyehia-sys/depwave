@@ -47,7 +47,7 @@ describe('renderWhy', () => {
       ctx,
     );
     expect(text).toContain('→ which imports p/loader.ts');
-    expect(text).toContain('~ which may load any module of its package via import(expr), including p/plugin.ts  ◀ selected because pnpm-lock.yaml changed');
+    expect(text).toContain('~ which may load or run any module of its package (dynamic import, spawned process, or unparsed code), including p/plugin.ts  ◀ selected because pnpm-lock.yaml changed');
     expect(text).toContain("~ marks a step depwave can't prove statically");
   });
 

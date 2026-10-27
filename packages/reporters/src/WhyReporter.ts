@@ -80,7 +80,8 @@ function phrase(step: ExplanationStep): string {
     case 'DYNAMIC_IMPORT':
       return step.confidence === Confidence.certain ? `which dynamically imports ${name}` : `which may dynamically import ${name} (template import)`;
     case 'WILDCARD':
-      return `which may load any module of its package via import(expr), including ${name}`;
+      // Reasons: import(expr) / require(expr), a test that spawns processes, or a file depwave could not parse.
+      return `which may load or run any module of its package (dynamic import, spawned process, or unparsed code), including ${name}`;
     default:
       return `which depends on ${name}`;
   }

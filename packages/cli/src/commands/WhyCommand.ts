@@ -29,12 +29,13 @@ export class WhyCommand extends Command {
   granularity = Option.String('--granularity', 'symbol', { validator: t.isEnum(['symbol', 'file'] as const), description: 'symbol (default) or file' });
 
   async execute(): Promise<number> {
+    let closeCache = (): void => {};
     try {
       const cwd = this.cwd ?? process.cwd();
       const target = repoRelative(this.target, cwd, await new GitService(cwd).root());
       const pipeline = await createPipeline(cwd, { cache: this.cache, granularity: this.granularity });
+      closeCache = () => pipeline.deps.cache?.close();
       const { report, graph } = await pipeline.impact({ base: this.base, head: this.head });
-      pipeline.deps.cache?.close();
 
       const explanation = explainImpact(target, report, graph);
       const context = { base: report.base, head: report.head, granularity: report.granularity };
@@ -43,6 +44,8 @@ export class WhyCommand extends Command {
     } catch (error) {
       this.context.stderr.write(`depwave: ${error instanceof Error ? error.message : String(error)}\n`);
       return EXIT_FAILURE;
+    } finally {
+      closeCache(); // also on errors: Windows keeps open SQLite files locked
     }
   }
 }

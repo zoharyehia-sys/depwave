@@ -257,13 +257,25 @@ describe('errors name the offending file', () => {
     expect((error as WorkspaceError).path).toBe('packages/bad/package.json');
   });
 
-  it('duplicate package names', async () => {
-    const error = await failure({
+  it('duplicate package names are a warning, not an error (pnpm accepts them; Vite has some)', async () => {
+    const { discovery, commit } = setup({
       'pnpm-workspace.yaml': 'packages: ["packages/*"]\n',
       'packages/a/package.json': json({ name: 'same' }),
       'packages/b/package.json': json({ name: 'same' }),
     });
-    expect((error as Error).message).toBe('packages/b/package.json: duplicate package name "same" (also in packages/a/package.json)');
+    const ws = await discovery.discover(commit);
+    expect(ws.packages.map((p) => p.root)).toEqual(['packages/a', 'packages/b']);
+    expect(ws.warnings).toEqual([
+      'package name "same" is used by 2 packages (packages/a/package.json, packages/b/package.json); imports of it resolve to the nearest one',
+    ]);
+  });
+
+  it('a UTF-8 BOM in package.json is fine (Node and pnpm ignore it)', async () => {
+    const { discovery, commit } = setup({
+      'pnpm-workspace.yaml': 'packages: ["packages/*"]\n',
+      'packages/a/package.json': `\uFEFF${json({ name: 'bom' })}`,
+    });
+    expect((await discovery.discover(commit)).packages.map((p) => p.name)).toEqual(['bom']);
   });
 
   it('pnpm-workspace.yaml with a non-list `packages`', async () => {

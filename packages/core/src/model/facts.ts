@@ -21,6 +21,11 @@ export interface FileFacts {
   moduleHash: string;
   /** Count of Tree-sitter ERROR nodes: facts are best-effort when > 0. */
   parseErrors: number;
+  /**
+   * Set when extraction crashed for this file (e.g. a pathological generated file). The facts are then empty, and the
+   * file is treated conservatively: it may depend on anything in its package, and any change to it is a whole-file change.
+   */
+  failed?: string;
 }
 
 export type ImportKind = 'static' | 'type' | 'dynamic' | 'require' | 'side-effect';

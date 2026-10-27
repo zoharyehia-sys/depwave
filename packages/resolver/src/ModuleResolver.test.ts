@@ -71,7 +71,8 @@ describe('relative specifiers', () => {
     expect(target(r.resolve('src/a.ts', './missing'))).toBe('unresolved:not-found');
     expect(r.resolve('a.ts', '../../outside')).toEqual({ kind: 'unresolved', reason: 'not-found', probed: [] });
     expect(target(r.resolve('src/a.ts', '/abs/path'))).toBe('unresolved:unsupported-syntax');
-    expect(target(r.resolve('src/a.ts', 'https://cdn.example.com/x.js'))).toBe('unresolved:unsupported-syntax');
+    expect(target(r.resolve('src/a.ts', 'file:///etc/x.js'))).toBe('unresolved:unsupported-syntax');
+    expect(target(r.resolve('src/a.ts', 'C:\\abs\\x.ts'))).toBe('unresolved:unsupported-syntax');
   });
 });
 
@@ -313,5 +314,96 @@ describe('configHash', () => {
     ['a workspace package exports map', { 'packages/p/package.json': { name: 'p', exports: './src/main.ts' } }],
   ])('changes when %s changes', (_label, change) => {
     expect(hash({ ...base, ...change })).not.toBe(original);
+  });
+});
+
+describe('real-world regressions (found by running depwave on tRPC and Vite)', () => {
+  it('tRPC: tsconfig extends a workspace package that uses ${configDir}; dist/src/index.js maps to src/index.ts', () => {
+    const r = repo(
+      {
+        'tooling/tsconfig/package.json': { name: '@monotest/tsconfig' },
+        'tooling/tsconfig/base.json': { compilerOptions: { outDir: '${configDir}/dist', rootDir: '${configDir}' } },
+        'pkgs/trpc/package.json': { name: '@monotest/trpc', exports: { '.': { types: './dist/src/index.d.ts', default: './dist/src/index.js' } } },
+        'pkgs/trpc/tsconfig.json': { extends: ['@monotest/tsconfig/base.json'] },
+        'pkgs/trpc/src/index.ts': '',
+      },
+      [
+        ['@monotest/tsconfig', 'tooling/tsconfig'],
+        ['@monotest/trpc', 'pkgs/trpc'],
+      ],
+    );
+    expect(target(r.resolve('pkgs/app/src/a.ts', '@monotest/trpc'))).toBe('pkgs/trpc/src/index.ts');
+  });
+
+  it('${configDir} in a shared base resolves per extending config, also in paths', () => {
+    const r = repo({
+      'configs/base.json': { compilerOptions: { paths: { '#lib/*': ['${configDir}/lib/*'] } } },
+      'apps/a/tsconfig.json': { extends: '../../configs/base.json' },
+      'apps/a/lib/x.ts': '',
+      'apps/b/tsconfig.json': { extends: '../../configs/base.json' },
+      'apps/b/lib/x.ts': '',
+    });
+    expect(target(r.resolve('apps/a/src/i.ts', '#lib/x'))).toBe('apps/a/lib/x.ts');
+    expect(target(r.resolve('apps/b/src/i.ts', '#lib/x'))).toBe('apps/b/lib/x.ts');
+  });
+
+  it('without tsconfig, dist/ maps to the package root as well as src/', () => {
+    const r = repo({ 'p/package.json': { name: 'p', main: './dist/lib/main.js' }, 'p/lib/main.ts': '' }, [['p', 'p']]);
+    expect(target(r.resolve('x.ts', 'p'))).toBe('p/lib/main.ts');
+  });
+
+  it('Vite: a UTF-8 BOM in package.json / tsconfig.json does not break resolution', () => {
+    const r = repo(
+      {
+        'p/package.json': `﻿${JSON.stringify({ name: 'bom-pkg', exports: './src/index.ts' })}`,
+        'p/src/index.ts': '',
+        'tsconfig.json': `﻿${JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { '@/*': ['src/*'] } } })}`,
+        'src/a.ts': '',
+      },
+      [['bom-pkg', 'p']],
+    );
+    expect(target(r.resolve('x.ts', 'bom-pkg'))).toBe('p/src/index.ts');
+    expect(target(r.resolve('x.ts', '@/a'))).toBe('src/a.ts');
+  });
+
+  it('Vite: bundler queries resolve to the file; a literal ? in an #imports key still wins', () => {
+    const r = repo({
+      'package.json': { name: 'app', imports: { '#question?mark': './q.js', '#hash': './h.js' } },
+      'src/worker.js': '',
+      'src/a.css': '',
+      'q.js': '',
+      'h.js': '',
+    });
+    expect(target(r.resolve('src/main.ts', './worker.js?worker'))).toBe('src/worker.js');
+    expect(target(r.resolve('src/main.ts', './a.css?inline&lang=css'))).toBe('src/a.css');
+    expect(target(r.resolve('src/main.ts', '#question?mark'))).toBe('q.js');
+    expect(target(r.resolve('src/main.ts', '#hash?raw'))).toBe('h.js');
+    const missing = r.resolve('src/main.ts', './gone.js?url');
+    expect(target(missing)).toBe('unresolved:not-found');
+    expect(missing.probed).toEqual(expect.arrayContaining(['src/gone.js?url', 'src/gone.js'])); // both attempts recorded
+  });
+
+  it('virtual and URL modules are external, not missing', () => {
+    const r = repo({});
+    expect(r.resolve('a.ts', 'virtual:pwa-register')).toMatchObject({ kind: 'external', packageName: 'virtual:' });
+    expect(r.resolve('a.ts', 'https://esm.sh/react')).toMatchObject({ kind: 'external', packageName: 'https:' });
+    expect(target(r.resolve('a.ts', 'file:///etc/x.js'))).toBe('unresolved:unsupported-syntax');
+  });
+
+  it('Vite: a package name shared by two workspace packages resolves to the one nearest the importer', () => {
+    const r = repo(
+      {
+        'tests/packages/name/package.json': { name: 'mylib' },
+        'tests/packages/name/index.ts': '',
+        'tests/packages/module/package.json': { name: 'mylib' },
+        'tests/packages/module/index.ts': '',
+      },
+      [
+        ['mylib', 'tests/packages/name'],
+        ['mylib', 'tests/packages/module'],
+      ],
+    );
+    expect(target(r.resolve('tests/packages/module/test/a.ts', 'mylib'))).toBe('tests/packages/module/index.ts');
+    expect(target(r.resolve('tests/packages/name/x.ts', 'mylib'))).toBe('tests/packages/name/index.ts');
   });
 });

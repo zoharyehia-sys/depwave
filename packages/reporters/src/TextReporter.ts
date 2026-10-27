@@ -16,6 +16,7 @@ export class TextReporter implements Reporter {
     for (const trigger of report.globalTriggers) {
       lines.push(`  trigger:        ${trigger.path} (${trigger.kind}${trigger.scope === undefined ? ', everything' : ''})`);
     }
+    for (const warning of report.warnings ?? []) lines.push(`  ⚠ ${warning}`);
     if (report.unresolved.length > 0) {
       lines.push(`  ⚠ unresolved imports: ${report.unresolved.length} (see --format json)`);
     }

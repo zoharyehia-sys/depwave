@@ -12,16 +12,20 @@ describe('post-comment', () => {
     expect(MARKER).toBe(COMMENT_MARKER);
   });
 
-  it('updates the most recent depwave comment and ignores everyone else', () => {
+  it('updates the most recent depwave BOT comment and ignores everyone else', () => {
+    const bot = { type: 'Bot' };
+    const human = { type: 'User' };
     const comments = [
-      { id: 1, body: `${MARKER}\nold report` },
-      { id: 2, body: 'LGTM' },
-      { id: 3, body: null },
-      { id: 4, body: `${MARKER}\nnewer report` },
-      { id: 5, body: 'quoting depwave: impacted' },
+      { id: 1, body: `${MARKER}\nold report`, user: bot },
+      { id: 2, body: 'LGTM', user: human },
+      { id: 3, body: null, user: bot },
+      { id: 4, body: `${MARKER}\nnewer report`, user: bot },
+      // A human quoting the report carries the marker too. Editing their comment would fail (403) and suppress the report.
+      { id: 5, body: `> ${MARKER}\n> 3 tests impacted\nwhy so many?`, user: human },
     ];
     expect(findStickyComment(comments)).toMatchObject({ id: 4 });
-    expect(findStickyComment([{ id: 9, body: 'no marker here' }])).toBeUndefined();
+    expect(findStickyComment([{ id: 9, body: 'no marker here', user: bot }])).toBeUndefined();
+    expect(findStickyComment([{ id: 10, body: MARKER, user: human }])).toBeUndefined();
   });
 
   it('leaves normal bodies alone and cuts oversized ones at a line boundary, with a note', () => {

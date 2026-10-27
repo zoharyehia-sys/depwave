@@ -362,6 +362,8 @@ class Extractor {
         const fn = node.childForFieldName('function');
         if (fn?.type === 'import') return this.dynamicImport(node, from, cls);
         if (isRequireCall(node) && !this.bound.has('require')) return this.requireCall(node, from);
+        const globKind = globCallKind(fn, this.bound);
+        if (globKind) return this.globImport(node, globKind, from);
         this.callee(fn, 'call', from, cls);
         for (const field of ['type_arguments', 'arguments']) {
           const child = node.childForFieldName(field);
@@ -437,6 +439,38 @@ class Extractor {
     else if (literal?.pattern !== undefined) fact.pattern = literal.pattern;
     else if (arg) this.walk(arg, from, cls); // fully dynamic: still record which bound names feed it
     this.imports.push(fact);
+  }
+
+  /**
+   * `import.meta.glob('./pages/*.ts')` (Vite) and `require.context('./icons', true, /…/)` (webpack) load every matching
+   * file: a glob dynamic import. Negated (`!…`) patterns are skipped (that only over-approximates); a pattern that isn't
+   * relative is fully dynamic, which widens to the package.
+   */
+  private globImport(call: Node, kind: 'import.meta.glob' | 'require.context', from: string): void {
+    const args = call.childForFieldName('arguments')?.namedChildren ?? [];
+    const first = args[0];
+    const patterns: string[] = [];
+    if (kind === 'require.context') {
+      if (first?.type === 'string') patterns.push(`${stringValue(first).replace(/\/$/, '')}/*`);
+    } else if (first?.type === 'string') {
+      patterns.push(stringValue(first));
+    } else if (first?.type === 'array') {
+      for (const item of first.namedChildren) if (item.type === 'string') patterns.push(stringValue(item));
+    }
+
+    const loc = location(call);
+    const positive = patterns.filter((p) => !p.startsWith('!'));
+    if (positive.length === 0) {
+      this.imports.push({ kind: 'dynamic', bindings: [], loc, ...(from !== MODULE ? { from } : {}) });
+      return;
+    }
+    for (const glob of positive) {
+      const relative = glob.startsWith('./') || glob.startsWith('../');
+      const fact: ImportFact = { kind: 'dynamic', bindings: [], loc };
+      if (relative) fact.pattern = simplifyGlob(glob);
+      if (from !== MODULE) fact.from = from;
+      this.imports.push(fact);
+    }
   }
 
   private requireCall(call: Node, from: string = MODULE): void {
@@ -576,6 +610,26 @@ function literalOrPattern(arg: Node): { specifier?: string; pattern?: string } |
     }
   }
   return hasSubstitution ? { pattern: text } : { specifier: text };
+}
+
+/** `import.meta.glob(…)` / `import.meta.globEager(…)` / `require.context(…)` calls, unless `require` is shadowed. */
+function globCallKind(fn: Node | null, bound: ReadonlySet<string>): 'import.meta.glob' | 'require.context' | undefined {
+  if (fn?.type !== 'member_expression') return undefined;
+  const object = fn.childForFieldName('object');
+  const property = fn.childForFieldName('property')?.text;
+  if (object?.type === 'meta_property' && (property === 'glob' || property === 'globEager')) return 'import.meta.glob';
+  if (object?.type === 'identifier' && object.text === 'require' && property === 'context' && !bound.has('require')) return 'require.context';
+  return undefined;
+}
+
+/**
+ * Reduces a glob to the `*`-only form the linker matches (where `*` spans directories): `**` and `**\/` collapse to
+ * `*`; anything fancier (`{a,b}`, `[x]`, `?`) cuts the pattern there and matches everything below, a superset.
+ */
+export function simplifyGlob(glob: string): string {
+  const special = glob.search(/[{[?]/);
+  const cut = special === -1 ? glob : `${glob.slice(0, special)}*`;
+  return cut.replace(/\*\*\/?/g, '*').replace(/\*+/g, '*');
 }
 
 /** Name node of a declaration-like node, which the reference walk must not report as a use. */
