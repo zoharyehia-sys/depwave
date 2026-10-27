@@ -1,5 +1,5 @@
 import type { GlobalTrigger } from './changes.js';
-import type { Confidence, EdgeKind } from './graph.js';
+import type { Confidence, EdgeKind, Granularity } from './graph.js';
 import type { NodeId } from './ids.js';
 
 export type ImpactMode = 'conservative' | 'balanced' | 'aggressive';
@@ -34,6 +34,7 @@ export interface ImpactReport {
   /** The merge base actually compared against (not the ref the user passed). */
   base: string;
   head: string;
+  granularity: Granularity;
   /** Changed paths as git reported them (both sides of renames). */
   changedFiles: string[];
   seeds: NodeId[];

@@ -8,7 +8,7 @@ export class TextReporter implements Reporter {
   render(report: ImpactReport, plan: TestPlan): string {
     const testCount = plan.groups.reduce((n, g) => n + g.tests.length, 0);
     const lines = [
-      `depwave impact ${short(report.base)}...${short(report.head)}`,
+      `depwave impact ${short(report.base)}...${short(report.head)} (${report.granularity} level)`,
       `  changed files:  ${report.changedFiles.length}`,
       `  impacted nodes: ${report.impacted.length}`,
       `  impacted tests: ${testCount}`,

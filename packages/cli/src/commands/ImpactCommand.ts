@@ -33,10 +33,14 @@ export class ImpactCommand extends Command {
   format = Option.String('--format', 'text', { validator: t.isEnum(FORMATS), description: 'Output format' });
   cwd = Option.String('--cwd', { description: 'Repository to analyze (defaults to the current directory)' });
   cache = Option.Boolean('--cache', true, { description: 'Use the persistent cache in .depwave/ (--no-cache to bypass)' });
+  granularity = Option.String('--granularity', 'symbol', {
+    validator: t.isEnum(['symbol', 'file'] as const),
+    description: 'symbol (precise, default) or file (Phase 1 file-level analysis)',
+  });
 
   async execute(): Promise<number> {
     try {
-      const pipeline = await createPipeline(this.cwd ?? process.cwd(), { cache: this.cache });
+      const pipeline = await createPipeline(this.cwd ?? process.cwd(), { cache: this.cache, granularity: this.granularity });
       const { report, plan, stats } = await pipeline.impact({ base: this.base, head: this.head });
       pipeline.deps.cache?.close();
       if (stats.cacheWarning) this.context.stderr.write(`depwave: warning: ${stats.cacheWarning}\n`);

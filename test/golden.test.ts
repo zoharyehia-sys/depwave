@@ -8,7 +8,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterAll, describe, expect, it } from 'vitest';
-import { applyChanges, loadFixtures, type Fixture, type Scenario } from './support/fixtures.js';
+import { applyChanges, loadFixtures, symbolExpectation, type Fixture, type Scenario } from './support/fixtures.js';
 import { TempRepo } from './support/tempRepo.js';
 
 const fixtures = await loadFixtures();
@@ -36,20 +36,28 @@ function scenarioRepo(fixture: Fixture, scenario: Scenario, commit = true): { re
 }
 
 describe.each(fixtures)('$name', (fixture) => {
-  it.each(fixture.spec.scenarios)('$name (cold, then warm from cache)', async (scenario) => {
+  it.each(fixture.spec.scenarios)('$name: symbol level (cold, then warm from cache)', async (scenario) => {
     const { repo, base, head } = scenarioRepo(fixture, scenario);
 
     const cold = await (await createPipeline(repo.dir)).impact({ base, head });
-    expect(allTests(cold.plan), JSON.stringify(cold.report.seeds)).toEqual(scenario.expected.file.impactedTests);
+    expect(allTests(cold.plan), JSON.stringify(cold.report.seeds)).toEqual(symbolExpectation(scenario).impactedTests);
+    expect(cold.report.granularity).toBe('symbol');
     expect(cold.report.unresolved).toEqual([]);
     expect(cold.stats).toMatchObject({ snapshotHits: 0, factsFromCache: 0 });
     expect(cold.stats.filesParsed).toBeGreaterThan(0);
 
-    // A fresh process (new pipeline, same .depwave/cache.db): both commits come straight from L3.
+    // A fresh process (new pipeline, same .depwave/cache.db): both commits come from L3, the diff's facts from L1.
     const warm = await (await createPipeline(repo.dir)).impact({ base, head });
-    expect(warm.stats).toEqual({ snapshotHits: 2, factsFromCache: 0, filesParsed: 0 });
+    expect(warm.stats).toMatchObject({ snapshotHits: 2, filesParsed: 0 });
     expect(warm.plan).toEqual(cold.plan);
     expect(warm.report).toEqual(cold.report);
+  });
+
+  it.each(fixture.spec.scenarios)('$name: file level', async (scenario) => {
+    const { repo, base, head } = scenarioRepo(fixture, scenario);
+    const { plan, report } = await (await createPipeline(repo.dir, { granularity: 'file' })).impact({ base, head });
+    expect(allTests(plan), JSON.stringify(report.seeds)).toEqual(scenario.expected.file.impactedTests);
+    expect(report.granularity).toBe('file');
   });
 });
 
@@ -116,9 +124,9 @@ describe('end-to-end details', () => {
     expect(allTests(plan)).toEqual(['packages/app/src/about.test.ts']);
   });
 
-  it('explains every impacted test with a shortest path back to a changed file', async () => {
+  it('file level: explains every impacted test with a shortest path back to a changed file', async () => {
     const { repo, base, head } = scenarioRepo(basic, scenario('leaf-body-change'));
-    const { report } = await (await createPipeline(repo.dir)).impact({ base, head });
+    const { report } = await (await createPipeline(repo.dir, { granularity: 'file' })).impact({ base, head });
     const byId = new Map(report.impacted.map((n) => [n.id, n]));
     const pathTo = (id: string): string[] => {
       const node = byId.get(id)!;
@@ -130,6 +138,24 @@ describe('end-to-end details', () => {
       'file:packages/ui/src/PriceTag.ts',
       'file:packages/ui/src/index.ts',
       'file:packages/app/src/checkout.ts',
+      'file:packages/app/src/checkout.test.ts',
+    ]);
+  });
+
+  it('symbol level: the path goes symbol to symbol, straight through both barrels', async () => {
+    const { repo, base, head } = scenarioRepo(basic, scenario('leaf-body-change'));
+    const { report } = await (await createPipeline(repo.dir)).impact({ base, head });
+    const byId = new Map(report.impacted.map((n) => [n.id, n]));
+    const pathTo = (id: string): string[] => {
+      const node = byId.get(id)!;
+      return node.via === undefined ? [id] : [...pathTo(node.via), id];
+    };
+    expect(report.seeds).toEqual(['sym:packages/utils/src/money.ts#formatCurrency']);
+    expect(pathTo('file:packages/app/src/checkout.test.ts')).toEqual([
+      'sym:packages/utils/src/money.ts#formatCurrency',
+      'sym:packages/ui/src/PriceTag.ts#PriceTag', // calls formatCurrency (imported via the utils barrel)
+      'sym:packages/app/src/checkout.ts#renderCheckout', // calls PriceTag (imported via the ui barrel)
+      'sym:packages/app/src/checkout.test.ts#<module>', // the test's top-level code calls renderCheckout
       'file:packages/app/src/checkout.test.ts',
     ]);
   });

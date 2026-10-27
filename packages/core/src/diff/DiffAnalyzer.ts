@@ -1,5 +1,7 @@
 import { NO_PACKAGE, type DependencyGraph } from '../graph/DependencyGraph.js';
 import type { ChangeSet, FileChange, GlobalTrigger } from '../model/changes.js';
+import type { FileFacts, SymbolFact } from '../model/facts.js';
+import { MODULE_SYMBOL, type Granularity } from '../model/graph.js';
 import { nodeId, type NodeId } from '../model/ids.js';
 import type { Workspace } from '../model/workspace.js';
 import { baseNameOf, dirOf, isWithin } from '../paths.js';
@@ -9,6 +11,11 @@ export interface DiffContext {
   head: DependencyGraph;
   baseWorkspace: Workspace;
   headWorkspace: Workspace;
+  /** Default 'file'. 'symbol' seeds only symbols whose content actually changed. */
+  granularity?: Granularity;
+  /** Facts of changed source files at base / head (symbol granularity). Missing → the whole file counts as changed. */
+  baseFacts?: ReadonlyMap<string, FileFacts>;
+  headFacts?: ReadonlyMap<string, FileFacts>;
 }
 
 const LOCKFILES = new Set(['pnpm-lock.yaml', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'bun.lock', 'bun.lockb']);
@@ -25,20 +32,38 @@ const DIRECTORY_CONFIG = /^(tsconfig.*\.json|jsconfig.*\.json|(vitest|vite|jest)
  *   a workspace package's manifest                  → that package and every package that (transitively) depends on it
  *
  * Seeds come from BOTH graphs, so a deleted file seeds its old dependents and an added one its new dependents.
+ *
+ * Symbol granularity narrows a modified source file to what really changed, by comparing facts structurally:
+ *   - a symbol whose bodyHash or export status differs (or that exists on one side only) is a seed;
+ *   - a different moduleHash (imports, top-level code) seeds `<module>`, which every symbol of the file depends on;
+ *   - equal hashes everywhere (comment/whitespace-only edits, moved code) seed nothing.
+ * Comparing hashes rather than mapping diff hunks to line spans is both simpler and more exact: moving an unchanged
+ * function produces hunks, but no hash changes.
  */
 export function analyzeChanges(changes: readonly FileChange[], ctx: DiffContext): ChangeSet {
   const seeds = new Set<NodeId>();
   const triggers: GlobalTrigger[] = [];
   const allFiles = [...new Set([...ctx.head.nodes('file'), ...ctx.base.nodes('file')].map((f) => f.path))];
+  const symbolLevel = ctx.granularity === 'symbol';
 
+  /** The whole file: its node, plus (symbol granularity) its top-level code, which reaches every symbol in it. */
+  const seedWholeFile = (path: string) => {
+    for (const id of [nodeId.file(path), ...(symbolLevel ? [nodeId.symbol(path, MODULE_SYMBOL)] : [])]) {
+      if (ctx.head.node(id) || ctx.base.node(id)) seeds.add(id);
+    }
+  };
   const seedFilesWhere = (predicate: (path: string) => boolean) => {
-    for (const path of allFiles) if (predicate(path)) seeds.add(nodeId.file(path));
+    for (const path of allFiles) if (predicate(path)) seedWholeFile(path);
   };
 
   for (const change of changes) {
+    const changed = symbolLevel && change.status === 'M' ? changedSymbols(change.path, ctx.baseFacts?.get(change.path), ctx.headFacts?.get(change.path)) : undefined;
+    if (changed) {
+      for (const id of changed) seeds.add(id);
+    }
+
     for (const path of change.oldPath === undefined ? [change.path] : [change.path, change.oldPath]) {
-      const id = nodeId.file(path);
-      if (ctx.head.node(id) || ctx.base.node(id)) seeds.add(id);
+      if (!changed) seedWholeFile(path);
 
       const trigger = classify(path, ctx);
       if (!trigger) continue;
@@ -48,7 +73,7 @@ export function analyzeChanges(changes: readonly FileChange[], ctx: DiffContext)
       } else if (trigger.kind === 'package-manifest') {
         const scope = new Set(trigger.scope);
         for (const graph of [ctx.head, ctx.base]) {
-          for (const pkg of scope) for (const file of graph.filesOf(pkg)) seeds.add(file.id);
+          for (const pkg of scope) for (const file of graph.filesOf(pkg)) seedWholeFile(file.path);
         }
       } else {
         seedFilesWhere((p) => isWithin(p, dirOf(path)));
@@ -57,6 +82,21 @@ export function analyzeChanges(changes: readonly FileChange[], ctx: DiffContext)
   }
 
   return { seeds: [...seeds].sort(), globalTriggers: triggers };
+}
+
+/**
+ * Symbols that differ between two versions of one file, or undefined when the file must count as wholly changed
+ * (facts missing on a side, or top-level code changed).
+ */
+export function changedSymbols(path: string, before: FileFacts | undefined, after: FileFacts | undefined): NodeId[] | undefined {
+  if (!before || !after || before.moduleHash !== after.moduleHash) return undefined;
+  const old = new Map(before.symbols.map((s) => [s.name, s]));
+  const now = new Map(after.symbols.map((s) => [s.name, s]));
+  const differs = (a: SymbolFact | undefined, b: SymbolFact | undefined) => !a || !b || a.bodyHash !== b.bodyHash || a.exported !== b.exported;
+
+  const changed = new Set<string>();
+  for (const name of [...old.keys(), ...now.keys()]) if (differs(old.get(name), now.get(name))) changed.add(name);
+  return [...changed].sort().map((name) => nodeId.symbol(path, name));
 }
 
 function classify(path: string, ctx: DiffContext): GlobalTrigger | undefined {

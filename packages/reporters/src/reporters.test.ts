@@ -6,6 +6,7 @@ import { TextReporter } from './TextReporter.js';
 const report: ImpactReport = {
   base: '0123456789abcdef0123456789abcdef01234567',
   head: 'HEAD',
+  granularity: 'symbol',
   changedFiles: ['packages/utils/src/money.ts'],
   seeds: ['file:packages/utils/src/money.ts'],
   globalTriggers: [],
@@ -30,7 +31,7 @@ const plan: TestPlan = {
 describe('TextReporter', () => {
   it('summarizes the run and lists impacted tests per package', () => {
     expect(new TextReporter().render(report, plan)).toMatchInlineSnapshot(`
-      "depwave impact 0123456789ab...HEAD
+      "depwave impact 0123456789ab...HEAD (symbol level)
         changed files:  1
         impacted nodes: 2
         impacted tests: 1

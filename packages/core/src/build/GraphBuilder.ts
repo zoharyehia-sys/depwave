@@ -1,14 +1,15 @@
 import { DependencyGraph, NO_PACKAGE } from '../graph/DependencyGraph.js';
-import type { FileFacts, ImportFact } from '../model/facts.js';
-import { Confidence, type EdgeKind, type FileNode } from '../model/graph.js';
+import type { FileFacts, ImportFact, SymbolFact } from '../model/facts.js';
+import { Confidence, MODULE_SYMBOL, type EdgeKind, type FileNode, type Granularity } from '../model/graph.js';
 import { nodeId, type NodeId } from '../model/ids.js';
 import type { UnresolvedImport } from '../model/impact.js';
 import type { Inventory, WorkspacePackage } from '../model/workspace.js';
 import { dirOf, isTestPath, isWithin, resolveRelative } from '../paths.js';
 import type { ResolverPort } from '../ports/resolver.js';
+import { ReExportResolver } from './ReExportResolver.js';
 
 /** Bump whenever linking output can change for the same inputs: it's part of every snapshot cache key. */
-export const GRAPH_VERSION = 1;
+export const GRAPH_VERSION = 3;
 
 export interface GraphBuildInput {
   inventory: Inventory;
@@ -16,6 +17,8 @@ export interface GraphBuildInput {
   facts: ReadonlyMap<string, FileFacts>;
   resolver: ResolverPort;
   isTestFile?: (path: string) => boolean;
+  /** Default 'file' (Phase 1 graph). 'symbol' adds symbols, references and barrel-chased bindings. */
+  granularity?: Granularity;
 }
 
 export interface GraphBuildResult {
@@ -34,6 +37,15 @@ export interface GraphBuildResult {
  *  wildcard                         `import(expr)`: the file may load anything in its own package (heuristic)
  *
  * Imported non-source files (styles, JSON, assets) get file nodes too, so editing them still has impact.
+ *
+ * Symbol granularity replaces the file-to-file import edges with (ARCHITECTURE.md §2.4):
+ *
+ *  file:F ─PART_OF→ sym:F#X           "any part of F" changes when any of its symbols does
+ *  sym:F#X ─IN_MODULE→ sym:F#<module> every symbol depends on its file's top-level code
+ *  sym ─CALLS/REFERENCES→ sym          references, bound through imports and barrels to the DEFINING symbol
+ *  sym ─REFERENCES→ file               when the binding can't be known statically (namespace used as a value, assets)
+ *  sym|<module> ─IMPORTS/DYNAMIC_IMPORT→ file   side-effect imports, bare require(), import() from the enclosing symbol
+ *  file ─RE_EXPORTS→ file              kept, so whole-module users of a barrel still see changes behind it
  */
 export function buildGraph(input: GraphBuildInput): GraphBuildResult {
   return new Linker(input).link();
@@ -46,9 +58,14 @@ class Linker {
   /** Deepest-root-first, for owner lookup of files the inventory doesn't list (assets). */
   private readonly packagesByDepth: WorkspacePackage[];
   private readonly sources: ReadonlyMap<string, Inventory['files'][number]>;
+  private readonly granularity: Granularity;
+  private readonly resolutions = new Map<string, string | undefined>();
+  private readonly binder: ReExportResolver;
 
   constructor(private readonly input: GraphBuildInput) {
     this.isTestFile = input.isTestFile ?? isTestPath;
+    this.granularity = input.granularity ?? 'file';
+    this.binder = new ReExportResolver({ facts: input.facts, resolve: (from, specifier) => this.resolvePath(from, specifier) });
     this.sources = new Map(input.inventory.files.map((f) => [f.path, f]));
     this.packagesByDepth = [...input.inventory.workspace.packages].sort((a, b) => b.root.length - a.root.length);
   }
@@ -102,6 +119,7 @@ class Linker {
   }
 
   private linkFile(path: string, facts: FileFacts): void {
+    if (this.granularity === 'symbol') return this.linkSymbols(path, facts);
     const from = nodeId.file(path);
     for (const fact of facts.imports) this.linkImport(path, from, fact);
     for (const fact of facts.exports) {
@@ -110,35 +128,121 @@ class Linker {
     }
   }
 
-  private linkImport(path: string, from: NodeId, fact: ImportFact): void {
+  // ─── symbol granularity ──────────────────────────────────────────────────────
+
+  private linkSymbols(path: string, facts: FileFacts): void {
+    const fileId = nodeId.file(path);
+    const moduleId = nodeId.symbol(path, MODULE_SYMBOL);
+    const names = new Set(facts.symbols.map((s) => s.name));
+    const nodeFor = (name: string | undefined) => (name !== undefined && names.has(name) ? nodeId.symbol(path, name) : moduleId);
+
+    const moduleSpan = { startLine: 1, endLine: 1, startByte: 0, endByte: 0 };
+    this.addSymbol(path, moduleId, { name: MODULE_SYMBOL, kind: 'module', exported: false, span: moduleSpan, bodyHash: facts.moduleHash });
+    for (const symbol of facts.symbols) {
+      const id = nodeId.symbol(path, symbol.name);
+      this.addSymbol(path, id, symbol);
+      this.edge(id, moduleId, 'IN_MODULE', fileId);
+      // A class depends on all its members. Methods are mostly called on instances (often typed as an interface),
+      // which syntax alone can't bind: whoever uses the class must see any of its methods change.
+      if (symbol.parent !== undefined && names.has(symbol.parent)) this.edge(nodeId.symbol(path, symbol.parent), id, 'PART_OF', fileId);
+    }
+
+    for (const fact of facts.imports) {
+      const from = nodeFor(fact.from);
+      if (fact.kind === 'dynamic') {
+        this.linkImport(path, from, fact, fileId);
+      } else if (fact.specifier !== undefined && (fact.kind === 'side-effect' || fact.bindings.length === 0)) {
+        this.linkSpecifier(path, from, fact.specifier, 'IMPORTS', false, fileId); // import './x'; require('./x')
+      } else if (fact.specifier !== undefined) {
+        this.reportIfUnresolved(path, fact.specifier); // bindings become edges through the references that use them
+      } else {
+        this.linkImport(path, from, fact, fileId); // require(expr)
+      }
+    }
+    for (const fact of facts.exports) {
+      if (fact.from !== undefined) this.linkSpecifier(path, fileId, fact.from, 'RE_EXPORTS', fact.typeOnly, fileId);
+    }
+
+    for (const ref of facts.references) {
+      const source = nodeFor(ref.from);
+      const [root = '', member] = ref.to.split('.');
+      const local = member !== undefined && names.has(`${root}.${member}`) ? `${root}.${member}` : root;
+      const target = names.has(root) ? { kind: 'symbol' as const, id: nodeId.symbol(path, local) } : this.binder.imported(path, root, member);
+      if (!target || target.id === source) continue;
+      if (target.kind === 'module') {
+        const targetPath = target.id.slice('file:'.length);
+        this.addFile(targetPath, this.sourceDetails(targetPath));
+      }
+      const typeOnly = ref.kind === 'type' || this.binder.isTypeOnlyBinding(path, root);
+      this.edge(source, target.id, ref.kind === 'call' ? 'CALLS' : 'REFERENCES', fileId, typeOnly);
+    }
+  }
+
+  private addSymbol(path: string, id: NodeId, symbol: SymbolFact): void {
+    const fileId = nodeId.file(path);
+    this.graph.addNode({
+      id,
+      kind: 'symbol',
+      fileId,
+      name: symbol.name,
+      symbolKind: symbol.kind,
+      exported: symbol.exported,
+      span: symbol.span,
+      bodyHash: symbol.bodyHash,
+    });
+    this.edge(fileId, id, 'PART_OF', fileId);
+  }
+
+  private edge(from: NodeId, to: NodeId, kind: EdgeKind, ownerFile: NodeId, typeOnly = false): void {
+    this.graph.addEdge({ from, to, kind, confidence: Confidence.certain, ownerFile, ...(typeOnly ? { typeOnly } : {}) });
+  }
+
+  private reportIfUnresolved(path: string, specifier: string): void {
+    const result = this.input.resolver.resolve(path, specifier);
+    if (result.kind === 'unresolved') this.unresolved.push({ from: path, specifier, reason: result.reason });
+  }
+
+  /** Resolved repository path for a specifier, memoized (the binder asks for the same pairs repeatedly). */
+  private resolvePath(from: string, specifier: string): string | undefined {
+    const key = `${from}\u0000${specifier}`;
+    if (!this.resolutions.has(key)) {
+      const result = this.input.resolver.resolve(from, specifier);
+      this.resolutions.set(key, result.kind === 'file' ? result.path : undefined);
+    }
+    return this.resolutions.get(key);
+  }
+
+  // ─── shared ──────────────────────────────────────────────────────────────────
+
+  private linkImport(path: string, from: NodeId, fact: ImportFact, ownerFile: NodeId = from): void {
     const kind: EdgeKind = fact.kind === 'dynamic' ? 'DYNAMIC_IMPORT' : 'IMPORTS';
     const typeOnly = fact.kind === 'type' || (fact.bindings.length > 0 && fact.bindings.every((b) => b.typeOnly));
 
     if (fact.specifier !== undefined) {
-      this.linkSpecifier(path, from, fact.specifier, kind, typeOnly);
+      this.linkSpecifier(path, from, fact.specifier, kind, typeOnly, ownerFile);
     } else if (fact.pattern !== undefined && (fact.pattern.startsWith('./') || fact.pattern.startsWith('../'))) {
-      this.linkPattern(path, from, fact.pattern);
+      this.linkPattern(path, from, fact.pattern, ownerFile);
     } else {
-      // Fully dynamic (or a non-relative glob): this file may load any module in its package.
-      const node = this.graph.node(from);
+      // Fully dynamic (or a non-relative glob): `from` may load any module in its package.
+      const node = this.graph.node(ownerFile);
       this.graph.addWildcardDependency((node?.kind === 'file' && node.packageId) || NO_PACKAGE, from);
     }
   }
 
-  private linkSpecifier(path: string, from: NodeId, specifier: string, kind: EdgeKind, typeOnly: boolean): void {
+  private linkSpecifier(path: string, from: NodeId, specifier: string, kind: EdgeKind, typeOnly: boolean, ownerFile: NodeId = from): void {
     const result = this.input.resolver.resolve(path, specifier);
     if (result.kind === 'unresolved') {
       this.unresolved.push({ from: path, specifier, reason: result.reason });
       return;
     }
     if (result.kind !== 'file') return; // third-party and builtins: lockfile triggers cover them
-    const to = this.addFile(result.path, { contentHash: '', hasSideEffects: false });
+    const to = this.addFile(result.path, this.sourceDetails(result.path));
     if (to === from) return;
-    this.graph.addEdge({ from, to, kind, confidence: Confidence.certain, ownerFile: from, ...(typeOnly ? { typeOnly } : {}) });
+    this.graph.addEdge({ from, to, kind, confidence: Confidence.certain, ownerFile, ...(typeOnly ? { typeOnly } : {}) });
   }
 
   /** `./locales/*.ts` → every tracked file it matches. A template may contain '/', so '*' spans directories. */
-  private linkPattern(path: string, from: NodeId, pattern: string): void {
+  private linkPattern(path: string, from: NodeId, pattern: string, ownerFile: NodeId = from): void {
     const absolute = resolveRelative(dirOf(path), pattern);
     if (absolute === undefined) return;
     const matcher = globToRegExp(absolute);
@@ -147,7 +251,7 @@ class Linker {
       if (!isWithin(candidate, staticDir) || !matcher.test(candidate)) continue;
       const to = this.addFile(candidate, this.sourceDetails(candidate));
       if (to === from) continue;
-      this.graph.addEdge({ from, to, kind: 'DYNAMIC_IMPORT', confidence: Confidence.likely, ownerFile: from, meta: { pattern } });
+      this.graph.addEdge({ from, to, kind: 'DYNAMIC_IMPORT', confidence: Confidence.likely, ownerFile, meta: { pattern } });
     }
   }
 

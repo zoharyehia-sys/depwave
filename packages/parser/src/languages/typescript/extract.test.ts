@@ -65,12 +65,12 @@ describe('imports', () => {
         const e = (a: string, b: string) => import(\`./x/\${a}\${b}/y.ts\`);
       `),
     ).toEqual([
-      { kind: 'dynamic', specifier: './pages/Home', bindings: [] },
-      { kind: 'dynamic', pattern: './locales/*.json', bindings: [] },
-      { kind: 'dynamic', bindings: [] },
-      { kind: 'dynamic', bindings: [] }, // no static prefix: too vague to glob
-      { kind: 'dynamic', specifier: './static.ts', bindings: [] },
-      { kind: 'dynamic', pattern: './x/*/y.ts', bindings: [] },
+      { kind: 'dynamic', specifier: './pages/Home', bindings: [], from: 'a' }, // enclosing symbol
+      { kind: 'dynamic', pattern: './locales/*.json', bindings: [], from: 'load' },
+      { kind: 'dynamic', bindings: [], from: 'b' },
+      { kind: 'dynamic', bindings: [], from: 'c' }, // no static prefix: too vague to glob
+      { kind: 'dynamic', specifier: './static.ts', bindings: [], from: 'd' },
+      { kind: 'dynamic', pattern: './x/*/y.ts', bindings: [], from: 'e' },
     ]);
   });
 
@@ -95,8 +95,8 @@ describe('imports', () => {
           { imported: 'join', local: 'j' },
         ],
       },
-      { kind: 'require', specifier: './lazy', bindings: [] },
-      { kind: 'require', bindings: [] },
+      { kind: 'require', specifier: './lazy', bindings: [], from: 'lazy' },
+      { kind: 'require', bindings: [], from: 'plugin' },
     ]);
   });
 
@@ -362,3 +362,21 @@ describe('robustness', () => {
 });
 
 export type { LanguageId };
+
+describe('moduleHash', () => {
+  const hash = (src: string) => facts(src).moduleHash;
+  const base = `import { a } from './a';\n// setup\ninit();\nexport function f() { return a; }\nexport { a };\n`;
+
+  it('ignores comments, whitespace and symbol bodies', () => {
+    expect(hash(`import { a }   from './a';\n\n/* explain */ init();\nexport function f() { return a + 1; }\nexport { a };\n`)).toBe(hash(base));
+  });
+
+  it.each([
+    ['an import', base.replace("'./a'", "'./b'")],
+    ['top-level code', base.replace('init();', 'init(true);')],
+    ['an export clause', base.replace('export { a };', 'export { a as b };')],
+    ['a directive', `'use strict';\n${base}`],
+  ])('changes when %s changes', (_label, changed) => {
+    expect(hash(changed)).not.toBe(hash(base));
+  });
+});

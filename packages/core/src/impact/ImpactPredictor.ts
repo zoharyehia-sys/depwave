@@ -11,7 +11,7 @@ import type { ImpactedNode, ImpactPolicyOptions } from '../model/impact.js';
 export const DEFAULT_POLICY: ImpactPolicyOptions = {
   mode: 'conservative',
   includeTypeOnly: true,
-  followEdges: ['IMPORTS', 'RE_EXPORTS', 'DYNAMIC_IMPORT', 'IMPORTS_SYMBOL', 'CALLS', 'REFERENCES', 'TESTS'],
+  followEdges: ['IMPORTS', 'RE_EXPORTS', 'DYNAMIC_IMPORT', 'IMPORTS_SYMBOL', 'CALLS', 'REFERENCES', 'PART_OF', 'IN_MODULE', 'TESTS'],
 };
 
 /** Per-hop decay for ranking. Ranking orders tests (fail fast); it never changes the impacted set. */

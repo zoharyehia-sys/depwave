@@ -39,7 +39,7 @@ describe('ASTParser over every fixture', () => {
         count++;
       }
     }
-    expect(count).toBe(58); // same total as the workspace inventory test: 12 + 14 + 11 + 13 + 8
+    expect(count).toBe(66); // 12 + 14 + 11 + 13 + 8 (workspace inventory test) + 8 (instance-methods)
   });
 
   it('every test file imports what it tests', () => {
@@ -88,7 +88,7 @@ describe('barrel-hell', () => {
 describe('dynamic-imports', () => {
   it('template-literal import becomes a glob', () => {
     expect(get('dynamic-imports', 'packages/app/src/i18n/load.ts').imports).toEqual([
-      { kind: 'dynamic', pattern: './locales/*.ts', bindings: [], loc: { line: 2, col: 21 } },
+      { kind: 'dynamic', pattern: './locales/*.ts', bindings: [], from: 'loadMessages', loc: { line: 2, col: 21 } },
     ]);
   });
 
@@ -98,7 +98,7 @@ describe('dynamic-imports', () => {
 
   it('import(name) is fully dynamic: no specifier, no pattern', () => {
     const [imp] = get('dynamic-imports', 'packages/plugins/src/registry.ts').imports;
-    expect(imp).toEqual({ kind: 'dynamic', bindings: [], loc: { line: 3, col: 10 } });
+    expect(imp).toEqual({ kind: 'dynamic', bindings: [], from: 'loadPlugin', loc: { line: 3, col: 10 } });
   });
 });
 
