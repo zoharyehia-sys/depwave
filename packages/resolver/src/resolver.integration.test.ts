@@ -3,7 +3,7 @@
  * a probe-soundness property, and oxc-resolver as a differential oracle.
  */
 import { existsSync, mkdirSync, symlinkSync } from 'node:fs';
-import { dirname, join, relative, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WORKTREE, type ResolutionResult, type Workspace } from '@depwave/core';
 import { GitService } from '@depwave/git';
@@ -196,7 +196,12 @@ describe('differential oracle: oxc-resolver on the same files, checked out and "
         expect(theirs.error, label).toBeUndefined();
         expect(toRepoPath(theirs.path!), label).toBe(mine.path);
       } else if (mine.kind === 'external' && !mine.packageName.startsWith('node:')) {
-        expect(theirs.path, `${label} should not exist on disk`).toBeUndefined(); // third-party: not installed here
+        // Third-party: never a file of the fixture itself. (oxc may still find it in an ancestor node_modules,
+        // e.g. when the temp dir sits inside a checkout, as on CI runners.)
+        if (theirs.path !== undefined) {
+          const rel = relative(env.repo.dir, theirs.path); // absolute when on another drive (Windows CI)
+          expect(rel.startsWith('..') || isAbsolute(rel), `${label} resolved inside the fixture: ${rel}`).toBe(true);
+        }
       } else {
         expect(mine.kind, label).not.toBe('unresolved');
       }

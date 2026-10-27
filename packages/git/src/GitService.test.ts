@@ -93,6 +93,12 @@ describe('GitService (against a real repo)', () => {
     expect(await service.mergeBase('feature', WORKTREE)).toBe(c1);
   });
 
+  it('keeps the error message to git\'s one fatal line; the full stderr stays available', () => {
+    const error = new GitError(['rev-parse'], 128, 'fatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n');
+    expect(error.message).toBe('git rev-parse failed (exit 128): fatal: not a git repository (or any parent up to mount point /)');
+    expect(error.stderr).toContain('Stopping at filesystem boundary');
+  });
+
   it('resolves refs to full commit SHAs and leaves WORKTREE alone', async () => {
     expect(await service.resolveRevision('main')).toMatch(/^[0-9a-f]{40}$/);
     expect(await service.resolveRevision(c1.slice(0, 8))).toBe(c1);

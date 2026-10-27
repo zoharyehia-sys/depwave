@@ -10,9 +10,18 @@ export class GitError extends Error {
     readonly exitCode: number | null,
     readonly stderr: string,
   ) {
-    super(`git ${args.join(' ')} failed (exit ${exitCode ?? 'signal'}): ${stderr.trim()}`);
+    super(`git ${args.join(' ')} failed (exit ${exitCode ?? 'signal'}): ${summarize(stderr)}`);
     this.name = 'GitError';
   }
+}
+
+/**
+ * One line for the error message: git's `fatal:`/`error:` line if there is one, else the first line. Git may add hints
+ * on later lines (e.g. Linux's "Stopping at filesystem boundary…"); the full text stays on GitError.stderr.
+ */
+function summarize(stderr: string): string {
+  const lines = stderr.split('\n').map((l) => l.trim()).filter(Boolean);
+  return lines.find((l) => /^(fatal|error):/.test(l)) ?? lines[0] ?? '';
 }
 
 /** Common flags that shield parsing from user config (external diff tools, colors). */
