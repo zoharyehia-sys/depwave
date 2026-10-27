@@ -562,6 +562,7 @@ checkout.test.ts
   - **SARIF** upload for cycle and unresolved-import findings in Code Scanning.
 - Runner adapters: `vitest related`, `jest --runTestsByPath`, `pytest` node IDs.
 - **Shadow mode (⭐ the trust builder):** run the full suite while recording depwave's prediction, and publish **recall** (impacted tests that failed ÷ all tests that failed) and **reduction %**. Only switch to enforced selection once recall is ≥ 99.9% over N weeks.
+  - ✅ **Built:** `depwave shadow --results <vitest|jest json | junit xml>` (exit 3 on a miss), the Action's `test-results` input, and a CI step on this repo that uploads `depwave-shadow.json` per build. Its first run found a real false negative: TS resolution picked `x.d.mts` for `./x.mjs`, so tests weren't linked to the runtime file. The resolver now follows a declaration file to its JavaScript sibling.
 - Safety valves: always run everything on `main` nightly, and support a `[depwave:all]` commit-message override.
 - ✅ **Exit:** used on its own repo plus one real OSS monorepo, with a published benchmark in the README.
 
@@ -599,6 +600,7 @@ depwave impact --base origin/main                  # human-readable blast radius
 depwave impact --base origin/main --format json    # machine-readable for CI
 depwave tests  --base origin/main --runner vitest  # prints runner-ready args
 depwave why    packages/app/src/checkout.test.ts   # explain one impacted node
+depwave shadow --results test-results.json         # did depwave select every failing test?
 depwave graph  --package @acme/ui --format mermaid # visualize
 depwave cycles                                     # Tarjan SCC lint
 depwave cache  stats|prune|clear
