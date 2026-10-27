@@ -2,7 +2,7 @@
  * The Phase 1 acceptance test: every fixture scenario, end to end through the real pipeline
  * (git → inventory → Tree-sitter → resolver → graph → impact → test plan), against its golden file-level test set.
  */
-import { allTests, WORKTREE, type Revision } from '@depwave/core';
+import { allTests, WORKTREE, type Explanation, type Revision } from '@depwave/core';
 import { AnalysisPipeline, createCli, createPipeline as createRealPipeline, type PipelineOptions } from '@depwave/cli';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -169,5 +169,56 @@ describe('end-to-end details', () => {
     expect(code).toBe(0);
     const { plan } = JSON.parse(chunks.join('')) as { plan: Parameters<typeof allTests>[0] };
     expect(allTests(plan)).toEqual(scenario('leaf-body-change').expected.file.impactedTests);
+  });
+});
+
+describe('depwave why (end to end)', () => {
+  async function why(args: string[]): Promise<{ code: number; json: { explanation: Explanation } }> {
+    const stdout = new PassThrough();
+    const chunks: string[] = [];
+    stdout.on('data', (c: Buffer) => chunks.push(c.toString()));
+    const code = await createCli().run(['why', ...args, '--format', 'json', '--no-cache'], { stdout });
+    return { code, json: JSON.parse(chunks.join('')) as { explanation: Explanation } };
+  }
+  const fixture = (name: string) => fixtures.find((f) => f.name === name)!;
+  const scenarioOf = (f: Fixture, name: string) => f.spec.scenarios.find((s) => s.name === name)!;
+
+  it('explains a code change, symbol by symbol, through the barrels', async () => {
+    const basic = fixture('pnpm-basic');
+    const { repo, base, head } = scenarioRepo(basic, scenarioOf(basic, 'leaf-body-change'));
+    const { code, json } = await why(['packages/app/src/checkout.test.ts', '--cwd', repo.dir, '--base', base, '--head', head]);
+    expect(code).toBe(0);
+    expect(json.explanation).toMatchObject({ kind: 'impacted', cause: { kind: 'changed' }, heuristic: false });
+    const steps = json.explanation.kind === 'impacted' ? json.explanation.steps : [];
+    expect(steps.map((s) => [s.symbol ?? s.path, s.relation ?? '-'])).toEqual([
+      ['packages/app/src/checkout.test.ts', '-'],
+      ['<module>', 'PART_OF'],
+      ['renderCheckout', 'CALLS'],
+      ['PriceTag', 'CALLS'],
+      ['formatCurrency', 'CALLS'],
+    ]);
+  });
+
+  it('attributes a trigger-driven selection to the trigger, not to code', async () => {
+    const basic = fixture('pnpm-basic');
+    const { repo, base, head } = scenarioRepo(basic, scenarioOf(basic, 'manifest-dependency-change'));
+    const { json } = await why(['packages/app/src/about.test.ts', '--cwd', repo.dir, '--base', base, '--head', head]);
+    expect(json.explanation).toMatchObject({ kind: 'impacted', cause: { kind: 'trigger', triggers: [{ path: 'packages/utils/package.json' }] } });
+  });
+
+  it('flags a path through import(expr) widening as heuristic', async () => {
+    const dyn = fixture('dynamic-imports');
+    const { repo, base, head } = scenarioRepo(dyn, scenarioOf(dyn, 'wildcard-widening'));
+    const { json } = await why(['packages/plugins/src/registry.test.ts', '--cwd', repo.dir, '--base', base, '--head', head]);
+    expect(json.explanation).toMatchObject({ kind: 'impacted', heuristic: true });
+    expect(json.explanation.kind === 'impacted' && json.explanation.steps.some((s) => s.relation === 'WILDCARD')).toBe(true);
+  });
+
+  it('says "not impacted" for an unrelated test, and accepts a path relative to a subdirectory', async () => {
+    const basic = fixture('pnpm-basic');
+    const { repo, base, head } = scenarioRepo(basic, scenarioOf(basic, 'leaf-body-change'));
+    const { code, json } = await why(['src/about.test.ts', '--cwd', join(repo.dir, 'packages', 'app'), '--base', base, '--head', head]);
+    expect(code).toBe(0);
+    expect(json.explanation).toEqual({ kind: 'not-impacted', target: 'packages/app/src/about.test.ts', changedFiles: ['packages/utils/src/money.ts'] });
   });
 });

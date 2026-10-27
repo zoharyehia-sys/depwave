@@ -1,6 +1,7 @@
 import { Builtins, Cli } from 'clipanion';
 import { CacheClearCommand, CacheStatsCommand } from './commands/CacheCommands.js';
 import { ImpactCommand } from './commands/ImpactCommand.js';
+import { WhyCommand } from './commands/WhyCommand.js';
 import { VERSION } from './version.js';
 
 export { VERSION };
@@ -10,6 +11,7 @@ export function createCli(): Cli {
   cli.register(Builtins.HelpCommand);
   cli.register(Builtins.VersionCommand);
   cli.register(ImpactCommand);
+  cli.register(WhyCommand);
   cli.register(CacheStatsCommand);
   cli.register(CacheClearCommand);
   return cli;

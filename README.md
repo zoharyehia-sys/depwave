@@ -4,7 +4,7 @@
 
 > 🚧 **Status: Phase 2 (symbol-level precision).** `depwave impact` follows changes symbol by symbol, binding imports
 > through barrels to the defining symbol and ignoring comment/whitespace-only edits, with a persistent cache. Verified on
-> every fixture scenario at both levels and on this repo itself. `depwave why` comes next.
+> every fixture scenario at both levels and on this repo itself. `depwave why` explains any selection.
 
 ## Usage
 
@@ -22,6 +22,27 @@ depwave impact --base main --head WORKTREE --format json
   coarser Phase 1 analysis. Symbol level never selects a test that file level wouldn't. See [ADR 0006](docs/adr/0006-symbol-level-model.md).
 - `--cwd <dir>` analyzes another repository. `--no-cache` bypasses the cache.
 - Exit codes: `0` ok, `1` analysis failed (one-line message on stderr), `2` not implemented.
+
+## Explain a result: `depwave why`
+
+```bash
+depwave why packages/app/src/checkout.test.ts --base origin/main
+```
+
+```text
+✔ packages/app/src/checkout.test.ts is impacted (symbol level, 909ad48fccd9...ad5322fd2231)
+
+    packages/app/src/checkout.test.ts
+      → runs its top-level code                  packages/app/src/checkout.test.ts
+      → which calls renderCheckout               packages/app/src/checkout.ts:3
+      → which calls PriceTag                     packages/ui/src/PriceTag.ts:3
+      → which calls formatCurrency  ◀ changed    packages/utils/src/money.ts:1
+```
+
+- Shows the **shortest** chain from a change to the file, naming each relation (calls, uses, uses the type, re-exports, imports dynamically).
+- A selection caused by a config change says so: `◀ selected because packages/utils/package.json changed`, never a made-up code path.
+- Steps depwave can't prove statically (template globs, `import(expr)`) are marked `~`.
+- Not impacted → says so; unknown path → exit code 1. Paths may be repo-relative or relative to where you are. `--format json` for tooling.
 
 ## Configuration: `depwave.config.json`
 

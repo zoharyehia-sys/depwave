@@ -541,7 +541,7 @@ checkout.test.ts
 - ✅ `--granularity symbol|file`. Golden suite runs every scenario at both levels; mutation-checked.
 - L2 resolution cache with **probe tracking**, `applyDelta`, export-surface early cutoff.
 - ✅ L3 commit snapshots (keyed by granularity too).
-- `depwave why <node>`, `depwave cycles`.
+- ✅ `depwave why <file>`: shortest path with labelled relations, trigger attribution, heuristic hops marked. ⏳ `depwave cycles`.
 - **fast-check suite: incremental ≡ full rebuild.**
 - ✅ **Exit:** warm incremental run < 2 s on 10k files. Measurable reduction in selected tests vs file-level on `barrel-hell`.
 

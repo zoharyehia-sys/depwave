@@ -14,6 +14,7 @@ import {
   type CachePort,
   type FileFacts,
   type GitPort,
+  type GraphView,
   type Granularity,
   type ImpactReport,
   type Inventory,
@@ -66,6 +67,8 @@ export interface ImpactResult {
   report: ImpactReport;
   plan: TestPlan;
   stats: RunStats;
+  /** Base ∪ head graph the impact walk ran on: what `depwave why` reads edges from. */
+  graph: GraphView;
 }
 
 interface Snapshot {
@@ -116,7 +119,8 @@ export class AnalysisPipeline {
         ? { baseFacts: await this.factsAt(mergeBase, before.graph, modified), headFacts: await this.factsAt(headRev, after.graph, modified) }
         : {}),
     });
-    const impacted = predictImpact(new UnionGraph([after.graph, before.graph]), changeSet.seeds);
+    const graph = new UnionGraph([after.graph, before.graph]);
+    const impacted = predictImpact(graph, changeSet.seeds);
     const plan = selectTests(impacted, after.graph, changeSet, after.workspace);
 
     return {
@@ -132,6 +136,7 @@ export class AnalysisPipeline {
       },
       plan,
       stats: this.stats,
+      graph,
     };
   }
 

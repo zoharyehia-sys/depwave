@@ -12,3 +12,4 @@ export {
 export { createCli, VERSION } from './cli.js';
 export { CacheClearCommand, CacheStatsCommand } from './commands/CacheCommands.js';
 export { EXIT_FAILURE, EXIT_NOT_IMPLEMENTED, ImpactCommand } from './commands/ImpactCommand.js';
+export { repoRelative, WhyCommand } from './commands/WhyCommand.js';

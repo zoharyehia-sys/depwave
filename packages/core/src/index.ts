@@ -22,3 +22,4 @@ export * from './build/GraphBuilder.js';
 export * from './diff/DiffAnalyzer.js';
 export * from './impact/ImpactPredictor.js';
 export * from './impact/TestSelector.js';
+export * from './impact/Explain.js';
