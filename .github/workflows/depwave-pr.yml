@@ -1,0 +1,25 @@
+name: depwave
+
+# Dogfooding the action: every PR to this repo gets depwave's impact comment.
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: depwave-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  impact:
+    name: impact comment
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the merge base must be available
+      - uses: ./
+        id: depwave
+      - name: Use the outputs
+        run: echo "depwave selected ${{ steps.depwave.outputs.impacted-tests }} of ${{ steps.depwave.outputs.total-tests }} test files"

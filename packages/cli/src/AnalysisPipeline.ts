@@ -122,6 +122,7 @@ export class AnalysisPipeline {
     const graph = new UnionGraph([after.graph, before.graph]);
     const impacted = predictImpact(graph, changeSet.seeds);
     const plan = selectTests(impacted, after.graph, changeSet, after.workspace);
+    plan.totalTests = [...after.graph.nodes('file')].filter((f) => f.isTest).length;
 
     return {
       report: {

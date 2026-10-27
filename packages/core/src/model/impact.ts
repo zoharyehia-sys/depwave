@@ -55,4 +55,6 @@ export interface TestPlan {
   /** True when a global trigger forced a full run. */
   runAll: boolean;
   groups: TestPlanGroup[];
+  /** Every test file in the head revision, impacted or not: the denominator for "3 of 41". */
+  totalTests?: number;
 }

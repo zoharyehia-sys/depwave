@@ -222,3 +222,29 @@ describe('depwave why (end to end)', () => {
     expect(json.explanation).toEqual({ kind: 'not-impacted', target: 'packages/app/src/about.test.ts', changedFiles: ['packages/utils/src/money.ts'] });
   });
 });
+
+describe('impact --format markdown (end to end)', () => {
+  it('produces the PR comment: headline, per-package tests, changed tag, and why-paths for indirectly impacted tests', async () => {
+    const basic = fixtures.find((f) => f.name === 'pnpm-basic')!;
+    const leaf = basic.spec.scenarios.find((s) => s.name === 'leaf-body-change')!;
+    const { repo, base, head } = scenarioRepo(basic, leaf);
+    // Also really change the money test (a comment alone wouldn't count: Phase 2 ignores comment-only edits).
+    repo.write('packages/utils/src/money.test.ts', `${basic.files.get('packages/utils/src/money.test.ts')!}it('rounds', () => expect(formatCurrency(1.005)).toBeTruthy());\n`);
+    const head2 = repo.commit('touch test');
+
+    const stdout = new PassThrough();
+    const chunks: string[] = [];
+    stdout.on('data', (c: Buffer) => chunks.push(c.toString()));
+    const code = await createCli().run(['impact', '--cwd', repo.dir, '--base', base, '--head', head2, '--format', 'markdown', '--no-cache'], { stdout });
+    const md = chunks.join('');
+
+    expect(code).toBe(0);
+    expect(md).toMatch(/^<!-- depwave-impact -->\n### 🌊 depwave: 3 test files impacted of 5 \(40% skipped\)/);
+    expect(md).toContain('- `packages/utils/src/money.test.ts` _(changed in this PR)_');
+    expect(md).toContain('#### Why? (top 2 tests)'); // the changed test needs no explanation
+    expect(md).toContain('<summary><code>packages/app/src/checkout.test.ts</code></summary>');
+    expect(md).toContain('→ which calls formatCurrency  ◀ changed');
+    expect(md).not.toContain('<summary><code>packages/utils/src/money.test.ts</code></summary>');
+    void head;
+  });
+});
