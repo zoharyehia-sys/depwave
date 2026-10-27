@@ -2,8 +2,9 @@
  * The GitHub Action's pure parts. The network calls are exercised for real by the dogfood workflow on every PR.
  */
 import { COMMENT_MARKER } from '@depwave/reporters';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { parseDocument } from 'yaml';
 import { findStickyComment, fitBody, MARKER, MAX_BODY } from '../action/post-comment.mjs';
 
 describe('post-comment', () => {
@@ -30,6 +31,28 @@ describe('post-comment', () => {
     expect(huge.length).toBeGreaterThan(MAX_BODY);
     expect(fitted.length).toBeLessThanOrEqual(MAX_BODY);
     expect(fitted).toMatch(/\.test\.ts`\n\n> \[!NOTE\]\n> Report truncated/);
+  });
+});
+
+describe('YAML files GitHub reads', () => {
+  // GitHub only reports a malformed action/workflow when a run starts. Parse them here so CI fails first.
+  const files = ['../action.yml', ...readdirSync(new URL('../.github/workflows/', import.meta.url)).map((f) => `../.github/workflows/${f}`)];
+
+  it.each(files)('%s parses as YAML with no errors', (file) => {
+    const doc = parseDocument(readFileSync(new URL(file, import.meta.url), 'utf8'));
+    expect(doc.errors.map((e) => e.message)).toEqual([]);
+    expect(doc.toJS()).toBeTypeOf('object');
+  });
+
+  it('action.yml declares every input it reads and every output it promises', () => {
+    const action = parseDocument(readFileSync(new URL('../action.yml', import.meta.url), 'utf8')).toJS() as {
+      inputs: Record<string, unknown>;
+      outputs: Record<string, { value: string }>;
+      runs: { using: string };
+    };
+    expect(action.runs.using).toBe('composite');
+    expect(Object.keys(action.inputs).sort()).toEqual(['base', 'comment', 'explain', 'github-token', 'granularity']);
+    for (const [name, output] of Object.entries(action.outputs)) expect(output.value, name).toBe(`\${{ steps.analyze.outputs.${name} }}`);
   });
 });
 
