@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { explainImpact, toPosixPath } from '@depwave/core';
 import { GitService } from '@depwave/git';
@@ -53,6 +53,11 @@ export class WhyCommand extends Command {
  */
 export function repoRelative(target: string, cwd: string, repoRoot: string): string {
   const fromCwd = isAbsolute(target) ? target : resolve(cwd, target);
-  if (isAbsolute(target) || existsSync(fromCwd)) return toPosixPath(relative(repoRoot, fromCwd));
-  return toPosixPath(target);
+  if (!isAbsolute(target) && !existsSync(fromCwd)) return toPosixPath(target);
+  // Compare real paths: the same folder can be spelled differently (Windows 8.3 short names such as RUNNER~1,
+  // junctions/symlinks, drive-letter case). A naive relative() between two spellings yields `../../…` garbage.
+  const rel = relative(realpath(repoRoot), realpath(fromCwd));
+  return toPosixPath(rel === '' || rel.startsWith('..') || isAbsolute(rel) ? target : rel);
 }
+
+const realpath = (path: string): string => (existsSync(path) ? realpathSync.native(path) : path);
