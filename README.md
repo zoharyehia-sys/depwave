@@ -2,8 +2,9 @@
 
 **AST-driven monorepo dependency & impact analyzer.** Given a git diff, depwave tells you which symbols, packages and tests are affected, and *why*.
 
-> 🚧 **Status: Phase 1 (file-level impact) works end to end, with a persistent cache.** `depwave impact` answers which
-> test files a diff affects, verified on every fixture scenario and on this repo itself. Symbol-level precision and `depwave why` come next.
+> 🚧 **Status: Phase 2 (symbol-level precision).** `depwave impact` follows changes symbol by symbol, binding imports
+> through barrels to the defining symbol and ignoring comment/whitespace-only edits, with a persistent cache. Verified on
+> every fixture scenario at both levels and on this repo itself. `depwave why` comes next.
 
 ## Usage
 
@@ -17,6 +18,8 @@ depwave impact --base main --head WORKTREE --format json
 
 - `--base` is compared via its **merge base** with `--head`, so commits that landed on main after you branched don't count.
 - `--head WORKTREE` includes uncommitted and untracked changes.
+- `--granularity symbol` (default) follows individual functions, classes and variables; `--granularity file` is the
+  coarser Phase 1 analysis. Symbol level never selects a test that file level wouldn't. See [ADR 0006](docs/adr/0006-symbol-level-model.md).
 - `--cwd <dir>` analyzes another repository. `--no-cache` bypasses the cache.
 - Exit codes: `0` ok, `1` analysis failed (one-line message on stderr), `2` not implemented.
 

@@ -10,7 +10,7 @@ const loc = { line: 1, col: 1 };
 const imp = (fact: Partial<ImportFact>): ImportFact => ({ kind: 'static', bindings: [], loc, ...fact });
 
 function facts(path: string, imports: ImportFact[] = [], exports: ExportFact[] = []): FileFacts {
-  return { path, language: 'typescript', contentHash: `h:${path}`, parserVersion: 't', imports, exports, symbols: [], references: [], hasSideEffects: false, parseErrors: 0 };
+  return { path, language: 'typescript', contentHash: `h:${path}`, parserVersion: 't', imports, exports, symbols: [], references: [], hasSideEffects: false, moduleHash: 'm', parseErrors: 0 };
 }
 
 type Answer = ResolutionResult extends infer R ? (R extends unknown ? Omit<R, 'probed'> : never) : never;

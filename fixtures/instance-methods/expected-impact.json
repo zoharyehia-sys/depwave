@@ -1,0 +1,19 @@
+{
+  "$schema": "../expected-impact.schema.json",
+  "description": "Methods called on instances typed as an interface: unbindable without types. Regression for a false negative found by running depwave on itself (commit ad5322f: GitError's message changed, cli.test.ts depended on it through GitService instance methods).",
+  "policy": "conservative",
+  "scenarios": [
+    {
+      "name": "error-reached-through-instance-method",
+      "description": "AppError is thrown from run(), called by Service.exec, reached only via an interface-typed instance. Using a class must mean depending on all of its members.",
+      "changes": [{ "op": "modify", "path": "src/errors.ts", "find": "service failed: ${message}", "replace": "service error: ${message}" }],
+      "expected": { "file": { "impactedTests": ["src/app.test.ts", "src/errors.test.ts"] } }
+    },
+    {
+      "name": "private-helper-change",
+      "description": "run() changes: only the app (through the instance), not the error's own test.",
+      "changes": [{ "op": "modify", "path": "src/service.ts", "find": "cmd.toUpperCase()", "replace": "cmd.trim().toUpperCase()" }],
+      "expected": { "file": { "impactedTests": ["src/app.test.ts"] } }
+    }
+  ]
+}

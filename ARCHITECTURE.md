@@ -534,10 +534,13 @@ checkout.test.ts
   base-graph traversal each breaks exactly the scenario that pins it. ⏳ **Exit (scale):** the 10k-file benchmark needs the cache.
 
 ### Phase 2: Precision & incrementality (weeks 5–8)
-- Symbol extraction plus `CALLS`/`REFERENCES` edges. `ReExportResolver` for barrels.
-- Hunk→symbol mapping with `bodyHash` (whitespace/comment-only changes impact nothing).
+- ✅ Symbol nodes, `<module>` pseudo-symbols, `PART_OF`/`IN_MODULE`/`CALLS`/`REFERENCES` edges; classes depend on their
+  members. `ReExportResolver` binds through barrels to the defining symbol (ADR 0006).
+- ✅ Changed symbols found by structural comparison of `bodyHash` / export status / `moduleHash` instead of hunk
+  mapping: comment, whitespace and moved-code edits impact nothing, with no extra git calls (ADR 0006).
+- ✅ `--granularity symbol|file`. Golden suite runs every scenario at both levels; mutation-checked.
 - L2 resolution cache with **probe tracking**, `applyDelta`, export-surface early cutoff.
-- L3 commit snapshots.
+- ✅ L3 commit snapshots (keyed by granularity too).
 - `depwave why <node>`, `depwave cycles`.
 - **fast-check suite: incremental ≡ full rebuild.**
 - ✅ **Exit:** warm incremental run < 2 s on 10k files. Measurable reduction in selected tests vs file-level on `barrel-hell`.

@@ -34,6 +34,7 @@ const facts = (contentHash: string, parserVersion = 'ts-1'): FileFacts => ({
   symbols: [],
   references: [],
   hasSideEffects: false,
+  moduleHash: 'm',
   parseErrors: 0,
 });
 

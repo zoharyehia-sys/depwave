@@ -21,3 +21,10 @@ export function tokenHash(node: Node): string {
   }
   return hash.digest('hex').slice(0, 16);
 }
+
+/** One hash over several nodes' token streams, in order. Empty input has a stable hash too. */
+export function combinedTokenHash(nodes: readonly Node[]): string {
+  const hash = createHash('sha1');
+  for (const node of nodes) hash.update(tokenHash(node)).update('\u0002');
+  return hash.digest('hex').slice(0, 16);
+}

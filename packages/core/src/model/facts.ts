@@ -14,6 +14,11 @@ export interface FileFacts {
   symbols: SymbolFact[];
   references: ReferenceFact[];
   hasSideEffects: boolean;
+  /**
+   * Token hash of everything at the top level that is NOT a symbol declaration (imports, export clauses, top-level
+   * statements), without comments. Equal hashes mean a diff outside every symbol changed nothing that runs.
+   */
+  moduleHash: string;
   /** Count of Tree-sitter ERROR nodes: facts are best-effort when > 0. */
   parseErrors: number;
 }
@@ -35,6 +40,8 @@ export interface ImportFact {
   /** Glob for template literals with a static prefix: import(`./locales/${l}.ts`) → `./locales/*.ts`. */
   pattern?: string;
   bindings: ImportBinding[];
+  /** Enclosing symbol for imports inside code (`import()` / `require()` in a function). Absent = top level. */
+  from?: string;
   loc: SourceLocation;
 }
 

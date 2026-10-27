@@ -12,7 +12,7 @@ import type {
   SymbolKind,
 } from '@depwave/core';
 import type { Node } from 'web-tree-sitter';
-import { tokenHash } from '../../hash.js';
+import { combinedTokenHash, tokenHash } from '../../hash.js';
 
 export type ExtractedFacts = Omit<FileFacts, 'contentHash' | 'parserVersion'>;
 
@@ -41,6 +41,7 @@ export function extractTypeScriptFacts(root: Node, path: string, language: Langu
     symbols: extractor.symbols,
     references: [...extractor.references.values()],
     hasSideEffects: extractor.hasSideEffects,
+    moduleHash: combinedTokenHash(extractor.moduleNodes),
     parseErrors: countParseErrors(root),
   };
 }
@@ -58,6 +59,8 @@ class Extractor {
   readonly symbols: SymbolFact[] = [];
   readonly references = new Map<string, ReferenceFact>();
   hasSideEffects = false;
+  /** Top-level statements that declare no symbol: what `moduleHash` covers. */
+  readonly moduleNodes: Node[] = [];
 
   /** Every name bound at module scope: imports + top-level declarations. References are only recorded to these. */
   private readonly bound = new Set<string>();
@@ -68,7 +71,12 @@ class Extractor {
   constructor(private readonly language: LanguageId) {}
 
   run(root: Node): void {
-    for (const statement of root.namedChildren) this.statement(statement);
+    for (const statement of root.namedChildren) {
+      const symbolsBefore = this.symbols.length;
+      this.statement(statement);
+      // A declaration is covered by its symbols' bodyHash; anything else at the top level is module code.
+      if (this.symbols.length === symbolsBefore && statement.type !== 'comment') this.moduleNodes.push(statement);
+    }
     for (const [local, as] of this.pendingExports) this.markExported(local, as);
     for (const body of this.bodies) this.walk(body.node, body.from, body.cls);
   }
@@ -353,7 +361,7 @@ class Extractor {
       case 'call_expression': {
         const fn = node.childForFieldName('function');
         if (fn?.type === 'import') return this.dynamicImport(node, from, cls);
-        if (isRequireCall(node) && !this.bound.has('require')) return this.requireCall(node);
+        if (isRequireCall(node) && !this.bound.has('require')) return this.requireCall(node, from);
         this.callee(fn, 'call', from, cls);
         for (const field of ['type_arguments', 'arguments']) {
           const child = node.childForFieldName(field);
@@ -423,6 +431,7 @@ class Extractor {
   private dynamicImport(call: Node, from: string, cls: string | undefined): void {
     const arg = call.childForFieldName('arguments')?.namedChildren[0];
     const fact: ImportFact = { kind: 'dynamic', bindings: [], loc: location(call) };
+    if (from !== MODULE) fact.from = from;
     const literal = arg ? literalOrPattern(arg) : undefined;
     if (literal?.specifier !== undefined) fact.specifier = literal.specifier;
     else if (literal?.pattern !== undefined) fact.pattern = literal.pattern;
@@ -430,9 +439,10 @@ class Extractor {
     this.imports.push(fact);
   }
 
-  private requireCall(call: Node): void {
+  private requireCall(call: Node, from: string = MODULE): void {
     const arg = call.childForFieldName('arguments')?.namedChildren[0];
     const fact: ImportFact = { kind: 'require', bindings: requireBindings(call), loc: location(call) };
+    if (from !== MODULE) fact.from = from;
     const literal = arg ? literalOrPattern(arg) : undefined;
     if (literal?.specifier !== undefined) fact.specifier = literal.specifier;
     else if (literal?.pattern !== undefined) fact.pattern = literal.pattern;

@@ -9,8 +9,8 @@ const fixtures = await loadFixtures();
 
 const sorted = (xs: readonly string[]) => [...xs].sort();
 
-it('has the Phase 0 fixture set', () => {
-  expect(fixtures.map((f) => f.name)).toEqual(['barrel-hell', 'cycles', 'dynamic-imports', 'pnpm-basic', 'ts-paths']);
+it('has the full fixture set', () => {
+  expect(fixtures.map((f) => f.name)).toEqual(['barrel-hell', 'cycles', 'dynamic-imports', 'instance-methods', 'pnpm-basic', 'ts-paths']);
 });
 
 describe.each(fixtures)('$name', ({ spec, files }) => {

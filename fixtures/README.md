@@ -15,6 +15,7 @@ fixtures/<name>/
 | `ts-paths` | tsconfig `paths` aliases; file-vs-directory-index shadowing on add/delete (negative probes) |
 | `cycles` | SCC detection; traversal termination inside a cycle |
 | `dynamic-imports` | Template-literal globs, literal lazy imports, conservative widening for `import(expr)` |
+| `instance-methods` | Methods called on interface-typed instances: a class must depend on all its members (regression found by self-hosting) |
 
 ## Rules for golden files
 

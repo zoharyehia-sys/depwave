@@ -8,11 +8,13 @@ import {
   predictImpact,
   selectTests,
   SNAPSHOT_FORMAT,
+  nodeId,
   UnionGraph,
   WORKTREE,
   type CachePort,
   type FileFacts,
   type GitPort,
+  type Granularity,
   type ImpactReport,
   type Inventory,
   type InventoryPort,
@@ -40,6 +42,8 @@ export interface PipelineDeps {
   cache?: CachePort;
   /** Everything that can change analysis output for identical input. Part of every snapshot key. */
   analysisVersion: string;
+  /** Default 'symbol'. 'file' reproduces the Phase 1 file-level analysis. */
+  granularity?: Granularity;
 }
 
 export interface ImpactRequest {
@@ -81,9 +85,13 @@ export class AnalysisPipeline {
   private readonly factsByHash = new Map<string, FileFacts>();
   private stats: RunStats = { snapshotHits: 0, factsFromCache: 0, filesParsed: 0 };
   private cache: CachePort | undefined;
+  private readonly granularity: Granularity;
+  private readonly snapshotKey: string;
 
   constructor(readonly deps: PipelineDeps) {
     this.cache = deps.cache;
+    this.granularity = deps.granularity ?? 'symbol';
+    this.snapshotKey = `${deps.analysisVersion}|granularity@${this.granularity}`;
   }
 
   async impact({ base, head }: ImpactRequest): Promise<ImpactResult> {
@@ -96,11 +104,17 @@ export class AnalysisPipeline {
     const before = await this.snapshot(mergeBase);
     const after = await this.snapshot(headRev);
 
+    const modified = changes.filter((c) => c.status === 'M').map((c) => c.path);
+    const symbolLevel = this.granularity === 'symbol';
     const changeSet = analyzeChanges(changes, {
       base: before.graph,
       head: after.graph,
       baseWorkspace: before.workspace,
       headWorkspace: after.workspace,
+      granularity: this.granularity,
+      ...(symbolLevel
+        ? { baseFacts: await this.factsAt(mergeBase, before.graph, modified), headFacts: await this.factsAt(headRev, after.graph, modified) }
+        : {}),
     });
     const impacted = predictImpact(new UnionGraph([after.graph, before.graph]), changeSet.seeds);
     const plan = selectTests(impacted, after.graph, changeSet, after.workspace);
@@ -109,6 +123,7 @@ export class AnalysisPipeline {
       report: {
         base: mergeBase,
         head: headRev,
+        granularity: this.granularity,
         changedFiles: [...new Set(changes.flatMap((c) => (c.oldPath === undefined ? [c.path] : [c.oldPath, c.path])))].sort(),
         seeds: changeSet.seeds,
         globalTriggers: changeSet.globalTriggers,
@@ -123,7 +138,7 @@ export class AnalysisPipeline {
   private async snapshot(rev: Revision): Promise<Snapshot> {
     const cacheable = rev !== WORKTREE; // a working tree has no immutable identity
     if (cacheable) {
-      const hit = this.cached((c) => c.loadSnapshot(rev, this.deps.analysisVersion));
+      const hit = this.cached((c) => c.loadSnapshot(rev, this.snapshotKey));
       if (hit?.formatVersion === SNAPSHOT_FORMAT) {
         this.stats.snapshotHits++;
         return { workspace: hit.workspace, graph: DependencyGraph.fromData(hit), unresolved: hit.unresolved };
@@ -133,14 +148,14 @@ export class AnalysisPipeline {
     const inventory = await this.deps.inventory.inventory(rev);
     const facts = await this.parse(rev, inventory.files);
     const resolver = await this.deps.createResolver(rev, inventory);
-    const { graph, unresolved } = buildGraph({ inventory, facts, resolver });
+    const { graph, unresolved } = buildGraph({ inventory, facts, resolver, granularity: this.granularity });
 
     if (cacheable) {
       this.cached((c) =>
         c.saveSnapshot({
           formatVersion: SNAPSHOT_FORMAT,
           commit: rev,
-          configHash: this.deps.analysisVersion,
+          configHash: this.snapshotKey,
           workspace: inventory.workspace,
           ...graph.toData(),
           unresolved,
@@ -184,6 +199,15 @@ export class AnalysisPipeline {
     );
   }
 
+  /** Facts for specific source files of a revision (memo → L1 → parse), e.g. the files a diff modified. */
+  private async factsAt(rev: Revision, graph: DependencyGraph, paths: readonly string[]): Promise<Map<string, FileFacts>> {
+    const files = paths.flatMap((path): SourceFile[] => {
+      const node = graph.node(nodeId.file(path));
+      return node?.kind === 'file' && node.language !== undefined && node.contentHash !== '' ? [{ path, language: node.language, contentHash: node.contentHash }] : [];
+    });
+    return this.parse(rev, files);
+  }
+
   /** Runs a cache operation; on any failure, disables the cache for the rest of the run and records why. */
   private cached<T>(operation: (cache: CachePort) => T): T | undefined {
     if (!this.cache) return undefined;
@@ -202,6 +226,8 @@ export const ANALYSIS_VERSION = `depwave@${VERSION}|graph@${GRAPH_VERSION}|resol
 export interface PipelineOptions {
   /** Use the persistent cache at `<repo root>/.depwave/cache.db`. Default true. */
   cache?: boolean;
+  /** Default 'symbol'. */
+  granularity?: Granularity;
 }
 
 /** Composition root: the only place adapters are instantiated. */
@@ -215,6 +241,7 @@ export async function createPipeline(cwd: string, options: PipelineOptions = {})
     createResolver: (rev, inventory) => ModuleResolver.load(git, rev, inventory.workspace, inventory.paths),
     ...(options.cache === false ? {} : { cache: new CacheManager(cachePath(await git.root())) }),
     analysisVersion: `${ANALYSIS_VERSION}|parser@${parser.version}`,
+    ...(options.granularity ? { granularity: options.granularity } : {}),
   });
 }
 
