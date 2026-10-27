@@ -44,6 +44,36 @@ depwave why packages/app/src/checkout.test.ts --base origin/main
 - Steps depwave can't prove statically (template globs, `import(expr)`) are marked `~`.
 - Not impacted → says so; unknown path → exit code 1. Paths may be repo-relative or relative to where you are. `--format json` for tooling.
 
+## GitHub Action: impact comment on every PR
+
+```yaml
+# .github/workflows/depwave.yml
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  impact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # depwave needs the merge base
+      - uses: zoharyehia-sys/depwave@main
+        id: depwave
+      # Optional: run only what changed.
+      - run: npx vitest run ${{ steps.depwave.outputs.tests }}
+        if: steps.depwave.outputs.run-all != 'true'
+```
+
+- Posts **one sticky comment** per PR (edited in place on every push): the headline (*"3 test files impacted of 41, 93% skipped"*),
+  tests per package, global triggers, unresolved-import warnings, and `depwave why` paths for the top tests reached
+  through other code.
+- Also writes the report to the **job summary**, so fork PRs (read-only token) still show it. The comment is skipped with a warning.
+- Inputs: `base` (default `origin/<PR base>`), `granularity`, `explain` (top N why-paths, default 3), `comment`, `github-token`.
+- Outputs: `impacted-tests`, `total-tests`, `run-all`, `tests` (space-separated paths), `report` (JSON path).
+- CLI equivalent: `depwave impact --base origin/main --format markdown --explain 3`.
+
 ## Configuration: `depwave.config.json`
 
 Optional, at the repository root. Read **from git at each analyzed revision**, like every other input, so the base and

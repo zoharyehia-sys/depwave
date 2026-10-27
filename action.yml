@@ -1,0 +1,101 @@
+name: depwave impact
+description: Comment on a pull request with the test files its diff impacts, and why.
+author: zoharyehia-sys
+branding:
+  icon: activity
+  color: blue
+
+inputs:
+  base:
+    description: Base revision to compare against. Default `origin/<the PR's base branch>`. The merge base is used.
+    required: false
+    default: ''
+  granularity:
+    description: '`symbol` (precise, default) or `file`.'
+    required: false
+    default: symbol
+  explain:
+    description: Include `depwave why` paths for the top N impacted tests (0 = none).
+    required: false
+    default: '3'
+  comment:
+    description: Post or update one sticky PR comment. The report always goes to the job summary.
+    required: false
+    default: 'true'
+  github-token:
+    description: Token used to comment. Needs `pull-requests: write`.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  impacted-tests:
+    description: Number of impacted test files.
+    value: ${{ steps.analyze.outputs.impacted-tests }}
+  total-tests:
+    description: Number of test files in the head revision.
+    value: ${{ steps.analyze.outputs.total-tests }}
+  run-all:
+    description: '`true` when a global trigger (lockfile, root config) selected every test.'
+    value: ${{ steps.analyze.outputs.run-all }}
+  tests:
+    description: Impacted test files, space-separated, for passing to a test runner.
+    value: ${{ steps.analyze.outputs.tests }}
+  report:
+    description: Path to the full JSON report.
+    value: ${{ steps.analyze.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v4
+      with:
+        package_json_file: ${{ github.action_path }}/package.json
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Build depwave
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: pnpm install --frozen-lockfile && pnpm build
+
+    - name: Analyze the pull request
+      id: analyze
+      shell: bash
+      env:
+        INPUT_BASE: ${{ inputs.base }}
+        INPUT_GRANULARITY: ${{ inputs.granularity }}
+        INPUT_EXPLAIN: ${{ inputs.explain }}
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        set -euo pipefail
+        BIN="$GITHUB_ACTION_PATH/packages/cli/dist/bin.js"
+        BASE="${INPUT_BASE:-origin/${BASE_REF:-main}}"
+        if ! git -C "$GITHUB_WORKSPACE" rev-parse --verify --quiet "$BASE^{commit}" >/dev/null; then
+          echo "::error::depwave: base '$BASE' not found. Check out with 'fetch-depth: 0' so the merge base is available."
+          exit 1
+        fi
+        JSON="$RUNNER_TEMP/depwave-impact.json"
+        MD="$RUNNER_TEMP/depwave-impact.md"
+        node "$BIN" impact --cwd "$GITHUB_WORKSPACE" --base "$BASE" --head HEAD --granularity "$INPUT_GRANULARITY" --format json > "$JSON"
+        # Second run is served from the cache the first one just filled.
+        node "$BIN" impact --cwd "$GITHUB_WORKSPACE" --base "$BASE" --head HEAD --granularity "$INPUT_GRANULARITY" --format markdown --explain "$INPUT_EXPLAIN" > "$MD"
+        cat "$MD" >> "$GITHUB_STEP_SUMMARY"
+        node -e '
+          const { plan } = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+          const tests = plan.groups.flatMap((g) => g.tests);
+          console.log(`impacted-tests=${tests.length}`);
+          console.log(`total-tests=${plan.totalTests ?? ""}`);
+          console.log(`run-all=${plan.runAll}`);
+          console.log(`tests=${tests.join(" ")}`);
+        ' "$JSON" >> "$GITHUB_OUTPUT"
+        echo "report=$JSON" >> "$GITHUB_OUTPUT"
+        echo "markdown=$MD" >> "$GITHUB_OUTPUT"
+
+    - name: Comment on the pull request
+      if: inputs.comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        REPORT_MD: ${{ steps.analyze.outputs.markdown }}
+      run: node "$GITHUB_ACTION_PATH/action/post-comment.mjs" "$REPORT_MD"
