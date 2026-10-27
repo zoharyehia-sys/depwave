@@ -5,3 +5,8 @@ dist/
 coverage/
 .depwave/
 *.log
+
+# CI run artifacts (tests JSON, depwave reports)
+test-results.json
+depwave-impact.json
+depwave-shadow.json

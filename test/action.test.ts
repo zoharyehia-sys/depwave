@@ -55,7 +55,7 @@ describe('YAML files GitHub reads', () => {
       runs: { using: string };
     };
     expect(action.runs.using).toBe('composite');
-    expect(Object.keys(action.inputs).sort()).toEqual(['base', 'comment', 'explain', 'github-token', 'granularity']);
+    expect(Object.keys(action.inputs).sort()).toEqual(['base', 'comment', 'explain', 'github-token', 'granularity', 'test-results']);
     for (const [name, output] of Object.entries(action.outputs)) expect(output.value, name).toBe(`\${{ steps.analyze.outputs.${name} }}`);
   });
 });
@@ -70,7 +70,7 @@ describe('action.yml', () => {
 
   it('never interpolates ${{ }} expressions straight into a shell script', () => {
     const runBlocks = [...action.matchAll(/run: \|?([\s\S]*?)(?=\n {4}- |\n*$)/g)].map((m) => m[1] ?? '');
-    expect(runBlocks).toHaveLength(3); // build, analyze, comment: guards against a regex that matches nothing
+    expect(runBlocks).toHaveLength(4); // build, analyze, comment, fail-on-miss: guards against a regex that matches nothing
     for (const block of runBlocks) expect(block).not.toMatch(/\$\{\{/);
     expect(runBlocks.join('\n')).not.toContain('steps.analyze.outputs'); // outputs reach scripts via env only
   });

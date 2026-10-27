@@ -17,7 +17,7 @@ import { TsConfigLoader, type TsConfig } from './tsconfig.js';
 import { Lookup, VirtualFileSystem } from './vfs.js';
 
 /** Bump when resolution behaviour changes: it's part of every configHash, so cached resolutions invalidate. */
-export const RESOLVER_VERSION = 1;
+export const RESOLVER_VERSION = 2;
 
 export interface ModuleResolverOptions {
   /** package.json conditions, in addition to tsconfig `customConditions`. `default` always matches. */
@@ -303,13 +303,26 @@ export class ModuleResolver implements ResolverPort {
     const ext = /\.[^./]+$/.exec(path)?.[0];
     for (const alias of (ext && TS_EXTENSION_ALIASES[ext]) ?? []) {
       const candidate = path.slice(0, -ext!.length) + alias;
-      if (lookup.isFile(candidate)) return candidate;
+      if (lookup.isFile(candidate)) return this.runtimeFile(lookup, candidate);
     }
     if (lookup.isFile(path)) return path;
     for (const extension of this.extensions) {
-      if (lookup.isFile(path + extension)) return path + extension;
+      if (lookup.isFile(path + extension)) return this.runtimeFile(lookup, path + extension);
     }
     return undefined;
+  }
+
+  /**
+   * TypeScript picks `x.d.mts` for `./x.mjs`, but the code that RUNS is `x.mjs`: a test importing it is impacted by
+   * edits to the implementation, which the declaration file never sees. Impact follows runtime, so a declaration
+   * with a JavaScript sibling resolves to the sibling. (Found by shadow mode: editing `action/post-comment.mjs`
+   * selected none of its tests.)
+   */
+  private runtimeFile(lookup: Lookup, path: string): string {
+    const match = /\.d\.([cm]?)ts$/.exec(path);
+    if (!match) return path;
+    const runtime = `${path.slice(0, -match[0].length)}.${match[1]}js`;
+    return lookup.isFile(runtime) ? runtime : path;
   }
 
   /** A directory import: its own package.json main fields, then index.* */
@@ -331,7 +344,7 @@ export class ModuleResolver implements ResolverPort {
   private index(lookup: Lookup, dir: string): string | undefined {
     for (const extension of this.extensions) {
       const candidate = joinPath(dir, `index${extension}`);
-      if (lookup.isFile(candidate)) return candidate;
+      if (lookup.isFile(candidate)) return this.runtimeFile(lookup, candidate);
     }
     return undefined;
   }

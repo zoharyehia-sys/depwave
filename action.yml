@@ -22,6 +22,13 @@ inputs:
     description: Post or update one sticky PR comment. The report always goes to the job summary.
     required: false
     default: 'true'
+  test-results:
+    description: >-
+      Shadow mode: results of a FULL test run (Vitest/Jest JSON or JUnit XML; several paths separated by spaces or
+      newlines). depwave checks that every failing test is one it selected, adds the verdict to the report, and fails
+      the step when one was missed. Run this action after your tests, with `if: !cancelled()`.
+    required: false
+    default: ''
   github-token:
     description: 'Token used to comment. Needs `pull-requests: write`.'
     required: false
@@ -43,6 +50,12 @@ outputs:
   report:
     description: Path to the full JSON report.
     value: ${{ steps.analyze.outputs.report }}
+  shadow-verdict:
+    description: 'With `test-results`: `sound`, `missed` or `inconclusive`.'
+    value: ${{ steps.analyze.outputs.shadow-verdict }}
+  shadow-missed:
+    description: 'With `test-results`: failing test files depwave did not select, space-separated.'
+    value: ${{ steps.analyze.outputs.shadow-missed }}
 
 runs:
   using: composite
@@ -74,6 +87,7 @@ runs:
         INPUT_BASE: ${{ inputs.base }}
         INPUT_GRANULARITY: ${{ inputs.granularity }}
         INPUT_EXPLAIN: ${{ inputs.explain }}
+        INPUT_TEST_RESULTS: ${{ inputs.test-results }}
         BASE_REF: ${{ github.base_ref }}
       run: |
         set -euo pipefail
@@ -88,6 +102,18 @@ runs:
         node "$BIN" impact --cwd "$GITHUB_WORKSPACE" --base "$BASE" --head HEAD --granularity "$INPUT_GRANULARITY" --format json > "$JSON"
         # Second run is served from the cache the first one just filled.
         node "$BIN" impact --cwd "$GITHUB_WORKSPACE" --base "$BASE" --head HEAD --granularity "$INPUT_GRANULARITY" --format markdown --explain "$INPUT_EXPLAIN" > "$MD"
+        if [ -n "$INPUT_TEST_RESULTS" ]; then
+          SHADOW=(node "$BIN" shadow --cwd "$GITHUB_WORKSPACE" --base "$BASE" --head HEAD --granularity "$INPUT_GRANULARITY")
+          for f in $INPUT_TEST_RESULTS; do SHADOW+=(--results "$f"); done
+          SHADOW_JSON="$RUNNER_TEMP/depwave-shadow.json"
+          "${SHADOW[@]}" --format json > "$SHADOW_JSON" || [ $? -eq 3 ] # 3 = missed, reported below; anything else is an error
+          "${SHADOW[@]}" --format markdown >> "$MD" || true
+          node -e '
+            const { shadow } = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            console.log(`shadow-verdict=${shadow.verdict}`);
+            console.log(`shadow-missed=${shadow.missed.join(" ")}`);
+          ' "$SHADOW_JSON" >> "$GITHUB_OUTPUT"
+        fi
         cat "$MD" >> "$GITHUB_STEP_SUMMARY"
         node -e '
           const { plan } = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
@@ -107,3 +133,13 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         REPORT_MD: ${{ steps.analyze.outputs.markdown }}
       run: node "$GITHUB_ACTION_PATH/action/post-comment.mjs" "$REPORT_MD"
+
+    # Last, so the comment (with the missed tests listed) is posted before the job goes red.
+    - name: Fail when depwave missed a failing test
+      if: steps.analyze.outputs.shadow-verdict == 'missed'
+      shell: bash
+      env:
+        MISSED: ${{ steps.analyze.outputs.shadow-missed }}
+      run: |
+        echo "::error::depwave shadow: failing test files that depwave did not select: $MISSED"
+        exit 3

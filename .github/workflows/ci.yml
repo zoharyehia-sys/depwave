@@ -26,8 +26,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint:deps
-      - run: pnpm test
       - run: pnpm build
+      - name: pnpm test
+        id: test
+        # JSON results feed depwave's shadow check below. `pnpm exec`, not `pnpm test --reporter=…`: pnpm parses
+        # `--reporter` as its own option and rejects `--outputFile.json` before vitest ever starts.
+        run: pnpm exec vitest run --reporter=default --reporter=json --outputFile.json=test-results.json
 
       # Dogfooding: the built CLI must analyze this very change. A crash, an unresolved import, or a git edge case
       # here is a regression no unit test caught. Make this job a required check in branch protection.
@@ -45,11 +49,26 @@ jobs:
           node packages/cli/dist/bin.js impact --base "$BASE" --head HEAD --format json > depwave-impact.json
           node -e "const r=require('./depwave-impact.json').report; if (r.unresolved.length) { console.error('unresolved imports:', r.unresolved); process.exit(1); }"
           node packages/cli/dist/bin.js cache stats
+
+      # Shadow mode: every test ran above; check that each failing one is a test depwave selected. Runs when tests
+      # fail too (that's the interesting case) and exits 3 when depwave missed one. The JSON is the track record.
+      - name: depwave shadow check
+        # No results file = the test step died before vitest reported; that failure is already visible above.
+        if: ${{ !cancelled() && steps.test.outcome != 'skipped' && hashFiles('test-results.json') != '' }}
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then BASE="origin/${{ github.base_ref }}"; else BASE="HEAD~1"; fi
+          SHADOW=(node packages/cli/dist/bin.js shadow --base "$BASE" --head HEAD --results test-results.json)
+          "${SHADOW[@]}" --format json > depwave-shadow.json || true
+          "${SHADOW[@]}" --format markdown >> "$GITHUB_STEP_SUMMARY" || true
+          "${SHADOW[@]}" # the step's verdict (served from the cache the first run filled)
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: depwave-impact-${{ matrix.os }}
-          path: depwave-impact.json
+          path: |
+            depwave-impact.json
+            depwave-shadow.json
           if-no-files-found: ignore
 
   # Paths with spaces and non-ASCII characters break naive quoting, URL conversion and `-z`-less git parsing.

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { createCli, VERSION } from './cli.js';
 import { TempRepo } from '../../../test/support/tempRepo.js';
 import { EXIT_FAILURE } from './commands/ImpactCommand.js';
+import { EXIT_MISSED } from './commands/ShadowCommand.js';
 import { repoRelative } from './commands/WhyCommand.js';
 
 async function run(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -108,6 +109,60 @@ describe('repoRelative (depwave why target paths)', () => {
       expect(repoRelative('a.test.ts', join(link, 'src'), repo.dir)).toBe('src/a.test.ts');
     } finally {
       rmSync(alias, { recursive: true, force: true });
+      repo.dispose();
+    }
+  });
+});
+
+describe('depwave shadow', () => {
+  const results = (dir: string, failing: string[], passing: string[]) => {
+    const file = join(dir, 'results.json');
+    const entry = (path: string, status: string) => ({ name: join(dir, path), status, assertionResults: [{ status }] });
+    writeFileSync(file, JSON.stringify({ testResults: [...failing.map((p) => entry(p, 'failed')), ...passing.map((p) => entry(p, 'passed'))] }));
+    return file;
+  };
+
+  it('exits 0 when every failing test was selected, and 3 naming the test when one was missed', async () => {
+    const { repo, commit: base } = TempRepo.from(
+      new Map([
+        ['package.json', '{ "name": "demo" }\n'],
+        ['src/a.ts', 'export const a = 1;\n'],
+        ['src/b.ts', 'export const b = 1;\n'],
+        ['src/a.test.ts', "import { a } from './a';\nconsole.log(a);\n"],
+        ['src/b.test.ts', "import { b } from './b';\nconsole.log(b);\n"],
+      ]),
+    );
+    try {
+      repo.write('src/a.ts', 'export const a = 2;\n');
+      const head = repo.commit('change a');
+      const args = ['shadow', '--cwd', repo.dir, '--base', base, '--head', head, '--no-cache'];
+
+      const caught = await run([...args, '--results', results(repo.dir, ['src/a.test.ts'], ['src/b.test.ts'])]);
+      expect(caught.code).toBe(0);
+      expect(caught.stdout).toContain('all 1 failing test file selected ✔');
+      expect(caught.stdout).toContain('a selective run would have run 1 of 2 test files (50% skipped)');
+
+      const missed = await run([...args, '--results', results(repo.dir, ['src/b.test.ts'], ['src/a.test.ts']), '--format', 'json']);
+      expect(missed.code).toBe(EXIT_MISSED);
+      expect(JSON.parse(missed.stdout).shadow).toMatchObject({ verdict: 'missed', missed: ['src/b.test.ts'], caught: [], selected: 1, ran: 2 });
+
+      const md = await run([...args, '--results', results(repo.dir, ['src/b.test.ts'], []), '--format', 'markdown']);
+      expect(md.stdout).toContain('#### 🕵️ Shadow check: 1 failing test file NOT selected ❌');
+      expect(md.stdout).toContain('> - `src/b.test.ts`');
+    } finally {
+      repo.dispose();
+    }
+  });
+
+  it('fails fast on a results file with no tests, before analyzing anything', async () => {
+    const { repo } = TempRepo.from(new Map([['package.json', '{ "name": "demo" }\n']]));
+    try {
+      const file = join(repo.dir, 'empty.json');
+      writeFileSync(file, '{ "testResults": [] }');
+      const { code, stderr } = await run(['shadow', '--cwd', repo.dir, '--base', 'does-not-exist', '--results', file]);
+      expect(code).toBe(EXIT_FAILURE);
+      expect(stderr).toMatch(/^depwave: no test files found in .*empty\.json/);
+    } finally {
       repo.dispose();
     }
   });

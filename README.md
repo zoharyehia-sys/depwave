@@ -91,6 +91,41 @@ jobs:
 - Outputs: `impacted-tests`, `total-tests`, `run-all`, `tests` (space-separated paths), `report` (JSON path).
 - CLI equivalent: `depwave impact --base origin/main --format markdown --explain 3`.
 
+## Shadow mode: prove it before you trust it
+
+Running only the selected tests is a bet that depwave saw every dependency. Shadow mode checks that bet on real CI runs:
+**keep running every test**, and let depwave check each failure against what it would have selected.
+
+```bash
+vitest run --reporter=default --reporter=json --outputFile.json=test-results.json
+depwave shadow --base origin/main --results test-results.json
+```
+
+```text
+depwave shadow 0123456789ab...HEAD: 1 failing test file NOT selected ✘
+  a selective run would have run 4 of 29 test files (86% skipped)
+  missed: test/action.test.ts
+```
+
+| Verdict | Meaning | Exit |
+|---|---|---|
+| `sound` | Every failing test was one depwave selected (or nothing failed) | 0 |
+| `missed` | A failing test was **not** selected: a flaky test, or a dependency depwave can't see | **3** |
+| `inconclusive` | Nothing missed, but some failures name no file (JUnit without paths) | 0 |
+
+- Reads **Vitest/Jest JSON** (`--reporter=json`, `jest --json`) and **JUnit XML**; repeat `--results` for several runners.
+  Relative paths are taken from the repo root (`--results-root` to change). The format is sniffed from the content.
+- The output also tells you what a selective run would have saved, and which result files depwave doesn't see as
+  tests (it can never select those).
+- **GitHub Action:** pass `test-results: test-results.json` and run the action *after* your tests with
+  `if: ${{ !cancelled() }}`. The verdict is appended to the PR comment, exposed as `shadow-verdict` / `shadow-missed`, and
+  the job fails on a miss.
+- This repo runs shadow mode on every CI build (`depwave-shadow.json` is uploaded as the track record). It has
+  already paid off: its first run found that a test importing `post-comment.mjs` was linked to the `.d.mts` type stub
+  next to it rather than to the code that runs. Now fixed: impact follows the runtime file.
+
+**When to switch to selective runs:** after a few weeks of `sound` on your own repo. Keep a nightly full run anyway.
+
 ## Configuration: `depwave.config.json`
 
 Optional, at the repository root. Read **from git at each analyzed revision**, like every other input, so the base and

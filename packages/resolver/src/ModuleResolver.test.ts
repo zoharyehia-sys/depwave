@@ -53,6 +53,15 @@ describe('relative specifiers', () => {
     [{ 'src/x.ts': '' }, './x.ts', 'src/x.ts'],
     [{ 'src/index.ts': '' }, '.', 'src/index.ts'],
     [{ 'src/index.ts': '' }, './', 'src/index.ts'],
+    // Impact follows runtime: a hand-written declaration next to its JavaScript resolves to the JavaScript.
+    // Regression (found by shadow mode): `./post-comment.mjs` linked to post-comment.d.mts, so edits to the code missed its tests.
+    [{ 'src/x.mjs': '', 'src/x.d.mts': '' }, './x.mjs', 'src/x.mjs'],
+    [{ 'src/x.cjs': '', 'src/x.d.cts': '' }, './x.cjs', 'src/x.cjs'],
+    [{ 'src/x.js': '', 'src/x.d.ts': '' }, './x.js', 'src/x.js'],
+    [{ 'src/x.js': '', 'src/x.d.ts': '' }, './x', 'src/x.js'],
+    [{ 'src/x/index.js': '', 'src/x/index.d.ts': '' }, './x', 'src/x/index.js'],
+    [{ 'src/x.d.ts': '' }, './x', 'src/x.d.ts'], // a declaration alone (ambient types) stays
+    [{ 'src/x.ts': '', 'src/x.d.ts': '', 'src/x.js': '' }, './x.js', 'src/x.ts'], // TS source still wins
   ])('%o: %s → %s', (files, specifier, expected) => {
     expect(target(repo(files).resolve('src/file.ts', specifier))).toBe(expected);
   });
