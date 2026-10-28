@@ -3,7 +3,7 @@
  * (git → inventory → Tree-sitter → resolver → graph → impact → test plan), against its golden file-level test set.
  */
 import { allTests, WORKTREE, type Explanation, type Revision } from '@depwave/core';
-import { AnalysisPipeline, createCli, createPipeline as createRealPipeline, type PipelineOptions } from '@depwave/cli';
+import { AnalysisPipeline, createCli, createPipeline as createRealPipeline, EXIT_CYCLES, type PipelineOptions } from '@depwave/cli';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -58,6 +58,19 @@ describe.each(fixtures)('$name', (fixture) => {
     const { plan, report } = await (await createPipeline(repo.dir, { granularity: 'file' })).impact({ base, head });
     expect(allTests(plan), JSON.stringify(report.seeds)).toEqual(scenario.expected.file.impactedTests);
     expect(report.granularity).toBe('file');
+  });
+
+  it('`depwave cycles` finds exactly the cycles the fixture lists', async () => {
+    const { repo } = TempRepo.from(fixture.files);
+    repos.push(repo);
+    const stdout = new PassThrough();
+    const chunks: string[] = [];
+    stdout.on('data', (c: Buffer) => chunks.push(c.toString()));
+    const code = await createCli().run(['cycles', '--cwd', repo.dir, '--format', 'json', '--no-cache'], { stdout });
+    const { cycles } = JSON.parse(chunks.join('')) as { cycles: { files: string[] }[] };
+    const expected = fixture.spec.cycles ?? [];
+    expect(cycles.map((c) => c.files)).toEqual(expected);
+    expect(code).toBe(expected.length > 0 ? EXIT_CYCLES : 0);
   });
 });
 
