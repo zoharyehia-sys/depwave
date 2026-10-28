@@ -30,8 +30,8 @@ conservative: when depwave can't see a dependency, it runs more tests, never few
 
 | Change | Selects |
 |---|---|
-| `pnpm-lock.yaml` | the packages whose resolved dependencies changed, and their dependents ([details](#lockfile-changes)) |
-| Other lockfiles (npm, yarn, bun), root `package.json`, workspace config, `depwave.config.json` | every test |
+| `pnpm-lock.yaml`, `package-lock.json` / `npm-shrinkwrap.json`, yarn berry `yarn.lock` | the packages whose resolved dependencies changed, and their dependents ([details](#lockfile-changes)) |
+| Yarn classic (v1) and bun lockfiles, root `package.json`, workspace config, `depwave.config.json` | every test |
 | CI definitions (`.github/workflows/`, `.gitlab-ci.yml`, …) and toolchain pins (`.nvmrc`, `.node-version`, `.tool-versions`, `.bun-version`, `.npmrc`) | every test: they change the environment tests run in |
 | A `tsconfig*.json` / test-runner / Babel config | everything under its directory |
 | A workspace package's `package.json` | that package and every package that depends on it |
@@ -43,8 +43,8 @@ conservative: when depwave can't see a dependency, it runs more tests, never few
 
 ### Lockfile changes
 
-Dependency bumps (Renovate, Dependabot) usually touch `pnpm-lock.yaml` and one manifest. depwave diffs the lockfile and
-selects only the workspace packages whose **resolved dependency closure** changed, even when the change is deep in the
+Dependency bumps (Renovate, Dependabot) usually touch a lockfile and one manifest. depwave diffs the lockfile (pnpm v6/v9,
+npm v2/v3, yarn berry) and selects only the workspace packages whose **resolved dependency closure** changed, even when the change is deep in the
 tree (`debug` moving to a new `ms` selects whoever uses `debug`), plus the packages that depend on them.
 
 ```text
@@ -57,11 +57,23 @@ It falls back to **every test**, and says why, whenever a change isn't confined 
 - pnpm itself changed (the env document of pnpm 11+ lockfiles), or `settings`, `overrides` or `patchedDependencies` did;
 - a changed package is hoisted to the root (`*eslint*`, `*prettier*`, your `public-hoist-pattern`), or
   `shamefully-hoist` / `node-linker=hoisted` is set;
-- the lockfile is new or deleted, unparseable, or in a format other than v6/v9.
+- the lockfile is new or deleted, unparseable, or in a format depwave doesn't read (yarn classic, bun).
 
-Replaying every lockfile commit in the history of the tRPC and Vite clones: **62%** and **32%** of test-file runs skipped
-(previously 0%). Every remaining full run had a legitimate reason: a pnpm bump, root dependencies, `overrides`, a
-hoisted eslint plugin, or a CI config change in the same commit.
+**Hoisted layouts** (npm, yarn with `nodeLinker: node-modules` or `pnpMode: loose`) put every dependency in the root
+`node_modules`, so code can import packages its manifest never declared, and it works. depwave records each file's
+third-party imports, so a package whose code imports a changed package (or anything depending on one) is selected too,
+declared or not. pnpm and Yarn Plug'n'Play refuse undeclared imports, so they don't need this.
+
+Replaying every lockfile commit in real repositories (previously 0% everywhere):
+
+| Repo | Lockfile | Test-file runs skipped | Why not more |
+|---|---|---|---|
+| tRPC | pnpm | **62%** | |
+| Vite | pnpm | **32%** | pnpm bumps, root dependencies, `overrides` |
+| Jest | yarn berry (hoisted) | **10%** | most lock-maintenance runs touch a hoisted `*eslint*` package |
+| Playwright | npm | 0% | its tooling lives in the root `package.json`, so nearly every bump reaches the root |
+
+Every full run had a legitimate reason, and the trigger names it.
 
 ## Explain a result: `depwave why`
 

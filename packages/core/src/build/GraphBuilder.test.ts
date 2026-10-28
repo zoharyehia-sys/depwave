@@ -125,6 +125,49 @@ describe('buildGraph', () => {
   });
 });
 
+describe('externals (the third-party packages a file loads, for lockfile analysis on hoisted layouts)', () => {
+  it('records runtime imports, require() and re-exports by package name; not types, relative paths or builtins', () => {
+    const external = (packageName: string, specifier = packageName) => ({ kind: 'external', packageName, specifier }) as const;
+    const { graph } = buildGraph({
+      inventory: inventory(['app/a.ts', 'app/b.ts', 'app/types.ts']),
+      facts: new Map([
+        [
+          'app/a.ts',
+          facts(
+            'app/a.ts',
+            [
+              imp({ specifier: 'lodash/fp' }),
+              imp({ kind: 'require', specifier: '@scope/util' }),
+              imp({ kind: 'type', specifier: 'zod' }),
+              imp({ specifier: 'yup', bindings: [{ imported: 'Schema', local: 'Schema', typeOnly: true }] }),
+              imp({ specifier: 'node:fs' }),
+              imp({ specifier: './b' }),
+            ],
+            [
+              { kind: 'reexport', name: 'x', local: 'x', from: 'clsx', typeOnly: false },
+              { kind: 'reexport', name: 'T', local: 'T', from: 'type-fest', typeOnly: true },
+            ],
+          ),
+        ],
+        ['app/b.ts', facts('app/b.ts')],
+      ]),
+      resolver: resolver({
+        'app/a.ts|lodash/fp': external('lodash', 'lodash/fp'),
+        'app/a.ts|@scope/util': external('@scope/util'),
+        'app/a.ts|zod': external('zod'),
+        'app/a.ts|yup': external('yup'),
+        'app/a.ts|node:fs': external('node:fs'),
+        'app/a.ts|./b': { kind: 'file', path: 'app/b.ts' },
+        'app/a.ts|clsx': external('clsx'),
+        'app/a.ts|type-fest': external('type-fest'),
+      }),
+    });
+    const node = (path: string) => graph.node(`file:${path}`);
+    expect(node('app/a.ts')).toMatchObject({ externals: ['@scope/util', 'clsx', 'lodash'] });
+    expect(node('app/b.ts')).not.toHaveProperty('externals'); // nothing third-party: no field at all
+  });
+});
+
 describe('globToRegExp', () => {
   it.each([
     ['src/locales/*.ts', 'src/locales/he.ts', true],

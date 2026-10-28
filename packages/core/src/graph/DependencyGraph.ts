@@ -95,7 +95,12 @@ export class DependencyGraph implements GraphView {
   }
 
   /** Files a package contains (via CONTAINS edges). */
+  /** Files of a package; NO_PACKAGE yields the files outside every package (they have no CONTAINS edge). */
   *filesOf(packageId: NodeId): Iterable<FileNode> {
+    if (packageId === NO_PACKAGE) {
+      for (const node of this.nodes('file')) if (node.packageId === undefined) yield node;
+      return;
+    }
     for (const edge of this.outEdges(packageId)) {
       const node = this.nodeMap.get(edge.to);
       if (edge.kind === 'CONTAINS' && node?.kind === 'file') yield node;

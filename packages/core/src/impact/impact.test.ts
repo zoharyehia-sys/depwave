@@ -144,6 +144,26 @@ describe('analyzeChanges', () => {
       expect(result.seeds).toEqual([f('app/a.test.ts'), f('app/a.ts'), f('lib/l.ts')]); // util untouched
     });
 
+    it('hoisted layouts (npm): a package whose code imports a changed package is affected even if it never declared it', () => {
+      const hoistGraph = graph(['app/a.ts', 'app/a.test.ts', 'lib/l.ts', 'util/u.ts', 'util/u.test.ts', 'scripts/run.ts'], [], [
+        ['app', ['lib']],
+        ['lib', []],
+        ['util', []],
+      ]);
+      const importsOf = (path: string, externals: string[]) => Object.assign(hoistGraph.node(f(path))!, { externals });
+      importsOf('lib/l.ts', ['clsx', 'react']); // undeclared, works because npm hoists
+      importsOf('scripts/run.ts', ['ms']); // outside every package
+      importsOf('util/u.ts', ['left-pad']);
+      const result = analyzeChanges([{ status: 'M', path: 'package-lock.json' }], {
+        ...ctx,
+        base: hoistGraph,
+        head: hoistGraph,
+        lockfiles: new Map([['package-lock.json', { kind: 'importers', importers: [], changes: ['clsx 2.1.0 → 2.1.1'], hoisted: ['clsx', 'ms'] } satisfies LockfileDiff]]),
+      });
+      expect(result.globalTriggers[0]?.scope).toEqual(['pkg:<none>', 'pkg:app', 'pkg:lib']); // lib, its dependent app, and loose files; not util
+      expect(result.seeds).toEqual([f('app/a.test.ts'), f('app/a.ts'), f('lib/l.ts'), f('scripts/run.ts')]);
+    });
+
     it('seeds nothing when no importer is affected', () => {
       expect(withLockfile({ kind: 'importers', importers: [], changes: [] })).toEqual({
         seeds: [],

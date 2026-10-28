@@ -1,0 +1,10 @@
+{
+  "name": "npm-lockfile",
+  "private": true,
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  },
+  "workspaces": [
+    "packages/*"
+  ]
+}

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { depPath, PnpmLockfileAnalyzer } from './PnpmLockfile.js';
+import { LockfileAnalyzer } from './LockfileAnalyzer.js';
+import { depPath } from './PnpmLockfile.js';
 
-const analyzer = new PnpmLockfileAnalyzer();
+const analyzer = new LockfileAnalyzer();
 
 /** A v9 lockfile: `a` uses ms directly, `b` gets it through debug, `c` uses left-pad. */
 const V9 = `lockfileVersion: '9.0'
@@ -154,7 +155,7 @@ describe('PnpmLockfileAnalyzer', () => {
     });
 
     it('everything when a publicly hoisted package changes: the defaults, plus configured patterns', () => {
-      expect(diff(V9, bump, { '.npmrc': 'public-hoist-pattern[]=*left-pad*' })).toEqual({ kind: 'all', reason: expect.stringMatching(/^left-pad changed, and pnpm hoists it/) });
+      expect(diff(V9, bump, { '.npmrc': 'public-hoist-pattern[]=*left-pad*' })).toEqual({ kind: 'all', reason: expect.stringMatching(/^left-pad changed, and it is hoisted to the root node_modules/) });
       expect(diff(V9, bump, { 'pnpm-workspace.yaml': 'publicHoistPattern: ["left-*"]' })).toMatchObject({ kind: 'all' });
       expect(diff(V9, bump, { '.npmrc': 'public-hoist-pattern[]=*left-pad*\npublic-hoist-pattern[]=!left-pad' })).toMatchObject({ kind: 'importers' });
       // A commented-out setting is not a setting.
@@ -197,8 +198,8 @@ snapshots:
     });
 
     it('selects everything when the package manager itself changes', () => {
-      expect(diff(env('12.4.1') + V9, env('12.15.0') + V9)).toEqual({ kind: 'all', reason: 'the package manager changed (pnpm 12.4.1 → 12.15.0)' });
-      expect(diff(V9, env('12.4.1') + V9)).toEqual({ kind: 'all', reason: 'the package manager changed (pnpm (unpinned) → 12.4.1)' });
+      expect(diff(env('12.4.1') + V9, env('12.15.0') + V9)).toEqual({ kind: 'all', reason: 'the package manager changed (pnpm 12.4.1 → pnpm 12.15.0)' });
+      expect(diff(V9, env('12.4.1') + V9)).toEqual({ kind: 'all', reason: 'the package manager changed (unpinned → pnpm 12.4.1)' });
     });
 
     it('refuses a stream with two lockfile documents instead of guessing', () => {
@@ -245,11 +246,13 @@ packages:
     expect(diff(v6, edit(v6, ['sha512-ms', 'sha512-ms-2']))).toMatchObject({ importers: ['packages/a', 'packages/b'] });
   });
 
-  it('handles only pnpm-lock.yaml, and asks for the layout config next to it and at the root', () => {
-    expect(analyzer.supports('pnpm-lock.yaml')).toBe(true);
-    expect(analyzer.supports('web/pnpm-lock.yaml')).toBe(true);
-    expect(analyzer.supports('package-lock.json')).toBe(false);
-    expect(analyzer.layoutConfigPaths('web/pnpm-lock.yaml')).toEqual(['.npmrc', 'pnpm-workspace.yaml', 'web/.npmrc', 'web/pnpm-workspace.yaml']);
+  it('handles pnpm, npm and yarn lockfiles, asking for the layout config next to each and at the root', () => {
+    for (const path of ['pnpm-lock.yaml', 'web/pnpm-lock.yaml', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock']) expect(analyzer.supports(path)).toBe(true);
+    for (const path of ['bun.lock', 'bun.lockb', 'pnpm-lock.yml']) expect(analyzer.supports(path)).toBe(false);
+    expect(analyzer.layoutConfigPaths('pnpm-lock.yaml')).toEqual(['.npmrc', 'pnpm-workspace.yaml']);
+    expect(analyzer.layoutConfigPaths('web/pnpm-lock.yaml')).toEqual(['.npmrc', 'web/.npmrc', 'pnpm-workspace.yaml', 'web/pnpm-workspace.yaml']);
+    expect(analyzer.layoutConfigPaths('web/yarn.lock')).toEqual(['.yarnrc.yml', 'web/.yarnrc.yml']);
+    expect(analyzer.layoutConfigPaths('package-lock.json')).toEqual([]);
   });
 });
 

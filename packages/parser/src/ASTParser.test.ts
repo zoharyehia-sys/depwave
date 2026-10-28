@@ -42,7 +42,7 @@ describe('ASTParser over every fixture', () => {
         count++;
       }
     }
-    expect(count).toBe(86); // 12 + 14 + 11 + 13 + 8 (workspace inventory test) + 8 (instance-methods) + 10 (runtime-deps) + 10 (pnpm-lockfile)
+    expect(count).toBe(106); // 12 + 14 + 11 + 13 + 8 (workspace inventory test) + 8 (instance-methods) + 10 (runtime-deps) + 10 × 3 (pnpm/npm/yarn-lockfile)
   });
 
   it('every test file imports what it tests', () => {

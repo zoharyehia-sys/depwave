@@ -45,6 +45,29 @@ describe('depwave CLI', () => {
     }
   });
 
+  it('treats files in languages it cannot parse as data instead of crashing (Playwright: a .py helper)', async () => {
+    const { repo, commit: base } = TempRepo.from(
+      new Map([
+        ['package.json', '{ "name": "demo" }\n'],
+        ['src/a.ts', 'export const a = 1;\n'],
+        ['src/font.test.ts', "import { a } from './a';\nconsole.log(a);\n"],
+        ['scripts/generate_font.py', 'print("font")\n'],
+      ]),
+    );
+    try {
+      repo.write('scripts/generate_font.py', 'print("font v2")\n');
+      const head = repo.commit('change the python helper');
+      const { code, stdout, stderr } = await run(['impact', '--cwd', repo.dir, '--base', base, '--head', head, '--format', 'json', '--no-cache']);
+      expect(stderr).toBe('');
+      expect(code).toBe(0);
+      const { report, plan } = JSON.parse(stdout);
+      expect(report.globalTriggers).toEqual([{ kind: 'data-file', path: 'scripts/generate_font.py', scope: ['pkg:demo'] }]);
+      expect(plan.groups.flatMap((g: { tests: string[] }) => g.tests)).toEqual(['src/font.test.ts']); // a test may run the script
+    } finally {
+      repo.dispose();
+    }
+  });
+
   it('rejects unknown output formats', async () => {
     const { code, stdout } = await run(['impact', '--format', 'xml']);
     expect(code).toBe(1);
