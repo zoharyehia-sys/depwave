@@ -126,6 +126,12 @@ describe('analyzeChanges', () => {
     expect(seeds('util/vitest.config.ts').seeds).toEqual([f('util/u.test.ts'), f('util/u.ts')]);
   });
 
+  it('a lockfile governs installs only at the root or a package root; elsewhere (test fixtures) it is data', () => {
+    expect(seeds('lib/pnpm-lock.yaml').globalTriggers).toEqual([{ kind: 'lockfile', path: 'lib/pnpm-lock.yaml' }]);
+    // Regression: this repo's own fixture lockfile (fixtures/<name>/repo/pnpm-lock.yaml) made every PR run everything.
+    expect(seeds('fixtures/demo/repo/pnpm-lock.yaml').globalTriggers).toEqual([{ kind: 'data-file', path: 'fixtures/demo/repo/pnpm-lock.yaml', scope: ['pkg:<none>'] }]);
+  });
+
   describe('an analyzed lockfile change', () => {
     const withLockfile = (diff: LockfileDiff) =>
       analyzeChanges([{ status: 'M', path: 'pnpm-lock.yaml' }], { ...ctx, lockfiles: new Map([['pnpm-lock.yaml', diff]]) });
@@ -221,6 +227,17 @@ describe('analyzeChanges: changes no import expresses (regressions from tRPC and
       seeds: [nodeId.file('app/__tests__/cli.test.ts'), nodeId.file('app/a.test.ts')],
       globalTriggers: [{ kind: 'data-file', path: 'app/templates/vanilla/package.json', scope: ['pkg:app'] }],
     });
+  });
+
+  it("depwave itself: a data file reaches other packages' tests through the test helper that loads it", () => {
+    // tools/test/support/load.ts reads tools/test/fixtures/*.json at runtime; lib's test imports the helper.
+    const files = ['tools/test/support/load.ts', 'tools/test/golden.test.ts', 'tools/src/cli.ts', 'lib/l.ts', 'lib/l.test.ts', 'lib/other.test.ts'];
+    const helperGraph = graph(files, [['lib/l.test.ts', 'tools/test/support/load.ts']], [['lib', []], ['tools', []]]);
+    const helperWs = workspace(['lib', 'tools']);
+    const changeSet = analyzeChanges([{ status: 'M', path: 'tools/test/fixtures/demo.json' }], { base: helperGraph, head: helperGraph, baseWorkspace: helperWs, headWorkspace: helperWs });
+    expect(changeSet.seeds).toEqual([nodeId.file('tools/test/golden.test.ts'), nodeId.file('tools/test/support/load.ts')]); // not tools/src/cli.ts
+    const tests = predictImpact(helperGraph, changeSet.seeds).map((n) => n.id).filter((id) => id.endsWith('.test.ts')).sort();
+    expect(tests).toEqual([nodeId.file('lib/l.test.ts'), nodeId.file('tools/test/golden.test.ts')]); // not lib/other.test.ts
   });
 
   it('a snapshot maps to exactly its own test', () => {

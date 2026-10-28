@@ -35,7 +35,7 @@ conservative: when depwave can't see a dependency, it runs more tests, never few
 | CI definitions (`.github/workflows/`, `.gitlab-ci.yml`, …) and toolchain pins (`.nvmrc`, `.node-version`, `.tool-versions`, `.bun-version`, `.npmrc`) | every test: they change the environment tests run in |
 | A `tsconfig*.json` / test-runner / Babel config | everything under its directory |
 | A workspace package's `package.json` | that package and every package that depends on it |
-| A file no code imports (JSON/text fixtures, templates, images) | the tests of its package: they may read it at runtime |
+| A file no code imports (JSON/text fixtures, templates, images, a lockfile outside a package root) | the tests of its package, plus every test that imports one of its test helpers (e.g. `test/support/loadFixtures.ts`): they may read it at runtime |
 | `__snapshots__/x.test.ts.snap` | exactly `x.test.ts` |
 | Docs and editor/lint config (`*.md`, LICENSE, `.vscode/`, …) outside test-data dirs | nothing |
 | `import(expr)`, a test that spawns processes (`child_process`, `execa`, …), a file depwave can't parse | "may load anything in its package" |

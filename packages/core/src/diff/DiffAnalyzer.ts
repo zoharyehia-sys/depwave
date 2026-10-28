@@ -85,7 +85,14 @@ export function analyzeChanges(changes: readonly FileChange[], ctx: DiffContext)
       } else if (trigger.kind === 'data-file') {
         const scope = new Set(trigger.scope);
         for (const graph of [ctx.head, ctx.base]) {
-          for (const pkg of scope) for (const file of graph.filesOf(pkg)) if (file.isTest) seeds.add(file.id);
+          for (const pkg of scope) {
+            for (const file of graph.filesOf(pkg)) {
+              if (file.isTest) seeds.add(file.id);
+              // A test helper that loads the data (test/support/fixtures.ts) carries it to every test importing the
+              // helper, in any package. Regression: fixture edits here missed packages/parser's fixture-driven tests.
+              else if (TEST_DATA_DIR.test(file.path)) seedWholeFile(file.path);
+            }
+          }
         }
       } else if (trigger.kind === 'package-manifest' || trigger.kind === 'lockfile') {
         const scope = new Set(trigger.scope);
@@ -121,7 +128,10 @@ function classify(path: string, ctx: DiffContext): GlobalTrigger | undefined {
   const name = baseNameOf(path);
   const dir = dirOf(path);
 
-  if (LOCKFILES.has(name)) return lockfileTrigger(path, ctx);
+  // Only a lockfile that governs an install counts: at the root or a package root. One in test fixtures is data.
+  if (LOCKFILES.has(name) && (dir === '' || [...ctx.headWorkspace.packages, ...ctx.baseWorkspace.packages].some((p) => p.root === dir))) {
+    return lockfileTrigger(path, ctx);
+  }
   if (CI_PATH.test(path) || (dir === '' && TOOLCHAIN_PINS.has(name))) return { kind: 'ci-config', path };
   if (dir === '' && WORKSPACE_CONFIGS.has(name)) return { kind: 'custom', path };
   if (path === 'package.json') return { kind: 'package-manifest', path };
@@ -168,7 +178,7 @@ const summarize = (changes: readonly string[]): string => {
 /**
  * A changed file no import reaches (JSON/text fixtures, templates, snapshots, images) may still be read by tests at
  * runtime, which no static graph can see. A Jest/Vitest snapshot maps to its own test exactly; any other such file
- * selects the tests of its package. Documentation and editor/lint config outside test-data directories select nothing.
+ * selects the tests of its package, and every test that imports one of its test helpers (non-test code in test dirs). Documentation and editor/lint config outside test-data directories select nothing.
  */
 function dataFileTrigger(path: string, ctx: DiffContext, seedTest: (testPath: string) => void): GlobalTrigger | undefined {
   const id = nodeId.file(path);

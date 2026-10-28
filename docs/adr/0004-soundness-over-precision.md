@@ -19,6 +19,8 @@ Real repositories showed tests whose dependencies no import expresses, so these 
 - **CI and toolchain changes** (a Bun version bump in a workflow selected 0 tests in tRPC) → every test.
 - **Tests that spawn processes** (Vite's `create-vite` CLI test runs the package as a process) → depend on every file of their package.
 - **Files no code imports** (templates, JSON fixtures) → the tests of their package. Snapshots → exactly their test.
+  Since 2026-10-28 also every test importing one of the package's test helpers (non-test code in test directories):
+  depwave's own parser and resolver tests load the root's fixtures through `test/support/fixtures.ts` and were missed.
 - **Files whose extraction crashes** → may depend on anything in their package, instead of failing the whole run.
 
 ### Lockfile narrowing (added 2026-10-28)
