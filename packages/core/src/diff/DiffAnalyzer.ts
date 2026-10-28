@@ -1,5 +1,5 @@
 import { NO_PACKAGE, type DependencyGraph } from '../graph/DependencyGraph.js';
-import type { ChangeSet, FileChange, GlobalTrigger } from '../model/changes.js';
+import type { ChangeSet, FileChange, GlobalTrigger, LockfileDiff } from '../model/changes.js';
 import type { FileFacts, SymbolFact } from '../model/facts.js';
 import { MODULE_SYMBOL, type Granularity } from '../model/graph.js';
 import { nodeId, type NodeId } from '../model/ids.js';
@@ -16,6 +16,8 @@ export interface DiffContext {
   /** Facts of changed source files at base / head (symbol granularity). Missing → the whole file counts as changed. */
   baseFacts?: ReadonlyMap<string, FileFacts>;
   headFacts?: ReadonlyMap<string, FileFacts>;
+  /** Analyzed lockfile changes by path. A changed lockfile without an entry selects everything. */
+  lockfiles?: ReadonlyMap<string, LockfileDiff>;
 }
 
 const LOCKFILES = new Set(['pnpm-lock.yaml', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'bun.lock', 'bun.lockb']);
@@ -35,7 +37,9 @@ const DIRECTORY_CONFIG = /^(tsconfig.*\.json|jsconfig.*\.json|(vitest|vite|jest)
  * File-level change analysis: every changed path (both sides of a rename) is a seed, plus global triggers for files
  * whose effect isn't visible as an import edge:
  *
- *   lockfile, workspace config, root package.json   → everything
+ *   workspace config, root package.json             → everything
+ *   lockfile                                        → the packages whose resolved dependencies changed, and their
+ *                                                     dependents (everything if the adapter can't tell)
  *   tsconfig / test-runner / babel config in dir D  → every file under D
  *   a workspace package's manifest                  → that package and every package that (transitively) depends on it
  *
@@ -81,9 +85,16 @@ export function analyzeChanges(changes: readonly FileChange[], ctx: DiffContext)
       } else if (trigger.kind === 'data-file') {
         const scope = new Set(trigger.scope);
         for (const graph of [ctx.head, ctx.base]) {
-          for (const pkg of scope) for (const file of graph.filesOf(pkg)) if (file.isTest) seeds.add(file.id);
+          for (const pkg of scope) {
+            for (const file of graph.filesOf(pkg)) {
+              if (file.isTest) seeds.add(file.id);
+              // A test helper that loads the data (test/support/fixtures.ts) carries it to every test importing the
+              // helper, in any package. Regression: fixture edits here missed packages/parser's fixture-driven tests.
+              else if (TEST_DATA_DIR.test(file.path)) seedWholeFile(file.path);
+            }
+          }
         }
-      } else if (trigger.kind === 'package-manifest') {
+      } else if (trigger.kind === 'package-manifest' || trigger.kind === 'lockfile') {
         const scope = new Set(trigger.scope);
         for (const graph of [ctx.head, ctx.base]) {
           for (const pkg of scope) for (const file of graph.filesOf(pkg)) seedWholeFile(file.path);
@@ -117,7 +128,10 @@ function classify(path: string, ctx: DiffContext): GlobalTrigger | undefined {
   const name = baseNameOf(path);
   const dir = dirOf(path);
 
-  if (LOCKFILES.has(name)) return { kind: 'lockfile', path };
+  // Only a lockfile that governs an install counts: at the root or a package root. One in test fixtures is data.
+  if (LOCKFILES.has(name) && (dir === '' || [...ctx.headWorkspace.packages, ...ctx.baseWorkspace.packages].some((p) => p.root === dir))) {
+    return lockfileTrigger(path, ctx);
+  }
   if (CI_PATH.test(path) || (dir === '' && TOOLCHAIN_PINS.has(name))) return { kind: 'ci-config', path };
   if (dir === '' && WORKSPACE_CONFIGS.has(name)) return { kind: 'custom', path };
   if (path === 'package.json') return { kind: 'package-manifest', path };
@@ -135,9 +149,36 @@ function classify(path: string, ctx: DiffContext): GlobalTrigger | undefined {
 }
 
 /**
+ * A lockfile change scoped to the workspace packages whose resolved dependencies changed, plus their dependents.
+ * Anything that can't be pinned to a package (the root importer, whose node_modules every package can load from; an
+ * importer that isn't a workspace package; an unanalyzed lockfile) selects everything, saying why.
+ */
+function lockfileTrigger(path: string, ctx: DiffContext): GlobalTrigger {
+  const diff = ctx.lockfiles?.get(path);
+  if (!diff) return { kind: 'lockfile', path };
+  if (diff.kind === 'all') return { kind: 'lockfile', path, detail: diff.reason };
+
+  const changed = summarize(diff.changes);
+  const packages = [...ctx.headWorkspace.packages, ...ctx.baseWorkspace.packages];
+  const scope = new Set<NodeId>();
+  for (const dir of diff.importers) {
+    if (dir === '') return { kind: 'lockfile', path, detail: `the repo root's dependencies changed (${changed}); every package can load them` };
+    const pkg = packages.find((p) => p.root === dir);
+    if (!pkg) return { kind: 'lockfile', path, detail: `dependencies of ${dir} changed (${changed}), and it is not a workspace package` };
+    for (const id of withDependents(nodeId.package(pkg.name), ctx)) scope.add(id);
+  }
+  return { kind: 'lockfile', path, scope: [...scope].sort(), detail: changed };
+}
+
+const summarize = (changes: readonly string[]): string => {
+  if (changes.length === 0) return 'resolution metadata only';
+  return changes.length <= 3 ? changes.join(', ') : `${changes.slice(0, 3).join(', ')} and ${changes.length - 3} more`;
+};
+
+/**
  * A changed file no import reaches (JSON/text fixtures, templates, snapshots, images) may still be read by tests at
  * runtime, which no static graph can see. A Jest/Vitest snapshot maps to its own test exactly; any other such file
- * selects the tests of its package. Documentation and editor/lint config outside test-data directories select nothing.
+ * selects the tests of its package, and every test that imports one of its test helpers (non-test code in test dirs). Documentation and editor/lint config outside test-data directories select nothing.
  */
 function dataFileTrigger(path: string, ctx: DiffContext, seedTest: (testPath: string) => void): GlobalTrigger | undefined {
   const id = nodeId.file(path);

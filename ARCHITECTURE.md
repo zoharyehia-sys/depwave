@@ -454,6 +454,7 @@ for each changed file:
   if file.isTest → seed the test directly
 global triggers (from ImpactPolicy):
   lockfile / root tsconfig / CI config changed  → seed the affected packages (or ALL)
+                                                  (✅ pnpm-lock.yaml: per-importer closure diff, see ADR 0004)
   package.json deps changed                     → seed that package node
 ```
 

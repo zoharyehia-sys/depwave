@@ -84,7 +84,7 @@ function seedCause(path: string, report: ImpactReport, graph: GraphView): SeedCa
   const packageId = file?.kind === 'file' ? file.packageId : undefined;
   const covers = (t: GlobalTrigger): boolean => {
     if (t.scope === undefined) return true;
-    if (t.kind === 'package-manifest' || t.kind === 'data-file') return packageId !== undefined && t.scope.includes(packageId);
+    if (t.kind === 'package-manifest' || t.kind === 'data-file' || t.kind === 'lockfile') return packageId !== undefined && t.scope.includes(packageId);
     return isWithin(path, dirOf(t.path)); // tsconfig / test config: everything under its directory
   };
   return { kind: 'trigger', triggers: report.globalTriggers.filter(covers) };

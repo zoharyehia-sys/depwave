@@ -12,6 +12,7 @@ import {
   UnionGraph,
   WORKTREE,
   type CachePort,
+  type FileChange,
   type FileFacts,
   type GitPort,
   type GraphView,
@@ -19,6 +20,8 @@ import {
   type ImpactReport,
   type Inventory,
   type InventoryPort,
+  type LockfileDiff,
+  type LockfilePort,
   type ParserPort,
   type ResolverPort,
   type Revision,
@@ -30,7 +33,7 @@ import {
 import { GitService } from '@depwave/git';
 import { ASTParser } from '@depwave/parser';
 import { ModuleResolver, RESOLVER_VERSION } from '@depwave/resolver';
-import { SourceInventory, WorkspaceDiscovery } from '@depwave/workspace';
+import { PnpmLockfileAnalyzer, SourceInventory, WorkspaceDiscovery } from '@depwave/workspace';
 import { VERSION } from './version.js';
 
 export interface PipelineDeps {
@@ -45,6 +48,8 @@ export interface PipelineDeps {
   analysisVersion: string;
   /** Default 'symbol'. 'file' reproduces the Phase 1 file-level analysis. */
   granularity?: Granularity;
+  /** Narrows lockfile changes to the packages whose dependencies changed. Without it, a lockfile change selects everything. */
+  lockfiles?: LockfilePort;
 }
 
 export interface ImpactRequest {
@@ -115,6 +120,7 @@ export class AnalysisPipeline {
       baseWorkspace: before.workspace,
       headWorkspace: after.workspace,
       granularity: this.granularity,
+      lockfiles: await this.lockfileDiffs(changes, mergeBase, headRev),
       ...(symbolLevel
         ? { baseFacts: await this.factsAt(mergeBase, before.graph, modified), headFacts: await this.factsAt(headRev, after.graph, modified) }
         : {}),
@@ -140,6 +146,23 @@ export class AnalysisPipeline {
       stats: this.stats,
       graph,
     };
+  }
+
+  /** Both sides of every changed lockfile the adapter understands, plus the config that decides hoisting, at head. */
+  private async lockfileDiffs(changes: readonly FileChange[], base: Revision, head: Revision): Promise<Map<string, LockfileDiff>> {
+    const port = this.deps.lockfiles;
+    const diffs = new Map<string, LockfileDiff>();
+    const targets = port ? changes.filter((c) => c.oldPath === undefined && port.supports(c.path)) : [];
+    if (!port || targets.length === 0) return diffs;
+
+    const config = [...new Set(targets.flatMap((c) => port.layoutConfigPaths(c.path)))];
+    const before = await this.deps.git.readBlobs(base, targets.filter((c) => c.status !== 'A').map((c) => c.path));
+    const after = await this.deps.git.readBlobs(head, [...targets.filter((c) => c.status !== 'D').map((c) => c.path), ...config]);
+    for (const { path } of targets) {
+      const layoutConfig = new Map(port.layoutConfigPaths(path).flatMap((p) => (after.has(p) ? [[p, after.get(p)!] as const] : [])));
+      diffs.set(path, port.diff({ path, before: before.get(path), after: after.get(path), layoutConfig }));
+    }
+    return diffs;
   }
 
   private async snapshot(rev: Revision): Promise<Snapshot> {
@@ -246,6 +269,7 @@ export async function createPipeline(cwd: string, options: PipelineOptions = {})
     inventory: new SourceInventory(git, new WorkspaceDiscovery(git)),
     parser,
     createResolver: (rev, inventory) => ModuleResolver.load(git, rev, inventory.workspace, inventory.paths),
+    lockfiles: new PnpmLockfileAnalyzer(),
     ...(options.cache === false ? {} : { cache: new CacheManager(cachePath(await git.root())) }),
     analysisVersion: `${ANALYSIS_VERSION}|parser@${parser.version}`,
     ...(options.granularity ? { granularity: options.granularity } : {}),

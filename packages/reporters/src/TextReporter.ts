@@ -1,6 +1,7 @@
 import type { ImpactReport, Reporter, TestPlan } from '@depwave/core';
 import { groupTriggers, listPaths } from './triggers.js';
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const short = (rev: string) => (/^[0-9a-f]{40}$/.test(rev) ? rev.slice(0, 12) : rev);
 
 export class TextReporter implements Reporter {
@@ -15,7 +16,8 @@ export class TextReporter implements Reporter {
       `  impacted tests: ${testCount}`,
     ];
     for (const { sample, paths } of groupTriggers(report.globalTriggers)) {
-      lines.push(`  trigger:        ${listPaths(paths)} (${sample.kind}${sample.scope === undefined ? ', everything' : ''})`);
+      const reach = sample.scope === undefined ? ', everything' : sample.kind === 'lockfile' ? `, ${plural(sample.scope.length, 'package')}` : '';
+      lines.push(`  trigger:        ${listPaths(paths)} (${sample.kind}${reach}${sample.detail ? `: ${sample.detail}` : ''})`);
     }
     for (const warning of report.warnings ?? []) lines.push(`  ⚠ ${warning}`);
     if (report.unresolved.length > 0) {
