@@ -1,0 +1,87 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.4.5
+
+  packages/app:
+    dependencies:
+      '@lock/ui':
+        specifier: workspace:*
+        version: link:../ui
+
+  packages/docs-site:
+    dependencies:
+      left-pad:
+        specifier: ^1.3.0
+        version: 1.3.0
+
+  packages/logger:
+    dependencies:
+      debug:
+        specifier: ^4.3.4
+        version: 4.3.4
+
+  packages/ui:
+    dependencies:
+      '@lock/utils':
+        specifier: workspace:*
+        version: link:../utils
+      clsx:
+        specifier: ^2.1.0
+        version: 2.1.0
+
+  packages/utils:
+    dependencies:
+      ms:
+        specifier: ^2.1.2
+        version: 2.1.2
+
+packages:
+
+  clsx@2.1.0:
+    resolution: {integrity: sha512-clsx-2.1.0}
+    engines: {node: '>=6'}
+
+  debug@4.3.4:
+    resolution: {integrity: sha512-debug-4.3.4}
+    engines: {node: '>=6.0'}
+    peerDependencies:
+      supports-color: '*'
+    peerDependenciesMeta:
+      supports-color:
+        optional: true
+
+  left-pad@1.3.0:
+    resolution: {integrity: sha512-left-pad-1.3.0}
+    deprecated: use String.prototype.padStart()
+
+  ms@2.1.2:
+    resolution: {integrity: sha512-ms-2.1.2}
+
+  typescript@5.4.5:
+    resolution: {integrity: sha512-typescript-5.4.5}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
+snapshots:
+
+  clsx@2.1.0: {}
+
+  debug@4.3.4:
+    dependencies:
+      ms: 2.1.2
+
+  left-pad@1.3.0: {}
+
+  ms@2.1.2: {}
+
+  typescript@5.4.5: {}

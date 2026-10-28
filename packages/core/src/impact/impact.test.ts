@@ -3,6 +3,7 @@ import { analyzeChanges, changedSymbols } from '../diff/DiffAnalyzer.js';
 import { DependencyGraph } from '../graph/DependencyGraph.js';
 import { Confidence, type GraphEdge } from '../model/graph.js';
 import { nodeId } from '../model/ids.js';
+import type { LockfileDiff } from '../model/changes.js';
 import type { Workspace } from '../model/workspace.js';
 import { explainPath, predictImpact } from './ImpactPredictor.js';
 import { allTests, selectTests } from './TestSelector.js';
@@ -123,6 +124,36 @@ describe('analyzeChanges', () => {
   it('a nested tsconfig or test config affects only files under its directory', () => {
     expect(seeds('lib/tsconfig.json').seeds).toEqual([f('lib/l.ts')]);
     expect(seeds('util/vitest.config.ts').seeds).toEqual([f('util/u.test.ts'), f('util/u.ts')]);
+  });
+
+  describe('an analyzed lockfile change', () => {
+    const withLockfile = (diff: LockfileDiff) =>
+      analyzeChanges([{ status: 'M', path: 'pnpm-lock.yaml' }], { ...ctx, lockfiles: new Map([['pnpm-lock.yaml', diff]]) });
+
+    it('seeds the packages whose dependencies changed and their dependents, naming what changed', () => {
+      const result = withLockfile({ kind: 'importers', importers: ['lib'], changes: ['ms 2.1.2 → 2.1.3', '+ chalk 5.3.0', '- request 2.88.2', 'debug 4.3.4 → 4.3.5'] });
+      expect(result.globalTriggers).toEqual([
+        { kind: 'lockfile', path: 'pnpm-lock.yaml', scope: ['pkg:app', 'pkg:lib'], detail: 'ms 2.1.2 → 2.1.3, + chalk 5.3.0, - request 2.88.2 and 1 more' },
+      ]);
+      expect(result.seeds).toEqual([f('app/a.test.ts'), f('app/a.ts'), f('lib/l.ts')]); // util untouched
+    });
+
+    it('seeds nothing when no importer is affected', () => {
+      expect(withLockfile({ kind: 'importers', importers: [], changes: [] })).toEqual({
+        seeds: [],
+        globalTriggers: [{ kind: 'lockfile', path: 'pnpm-lock.yaml', scope: [], detail: 'resolution metadata only' }],
+      });
+    });
+
+    it.each([
+      ['the root importer changed', { kind: 'importers', importers: ['', 'lib'], changes: ['typescript 5.4.5 → 5.4.6'] }, /^the repo root's dependencies changed \(typescript 5\.4\.5 → 5\.4\.6\)/],
+      ['an importer is not a workspace package', { kind: 'importers', importers: ['tools/gen'], changes: [] }, /^dependencies of tools\/gen changed .* not a workspace package/],
+      ['the adapter gave up', { kind: 'all', reason: 'pnpm lockfileVersion 5.4 is not analyzed' }, /^pnpm lockfileVersion 5\.4/],
+    ] as const)('selects everything, saying why, when %s', (_, diff, detail) => {
+      const result = withLockfile(diff as LockfileDiff);
+      expect(result.globalTriggers).toEqual([{ kind: 'lockfile', path: 'pnpm-lock.yaml', detail: expect.stringMatching(detail) }]);
+      expect(result.seeds).toHaveLength(5);
+    });
   });
 });
 

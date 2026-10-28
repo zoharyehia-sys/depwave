@@ -72,7 +72,11 @@ export class MarkdownReporter implements Reporter {
 }
 
 function triggerReach(trigger: ImpactReport['globalTriggers'][number]): string {
-  if (trigger.scope === undefined) return 'every test runs';
+  if (trigger.scope === undefined) return trigger.detail ? `every test runs, because ${trigger.detail}` : 'every test runs';
+  if (trigger.kind === 'lockfile') {
+    if (trigger.scope.length === 0) return `${trigger.detail ?? 'nothing resolved changed'}; no package's dependencies changed, so nothing runs`;
+    return `${trigger.detail ?? 'dependencies changed'}: everything in the ${plural(trigger.scope.length, 'package')} that use them (and their dependents) runs`;
+  }
   if (trigger.kind === 'data-file') return `not imported by any code, so the tests of its package run (they may read it at runtime)`;
   return `everything in ${plural(trigger.scope.length, 'package')} runs`;
 }

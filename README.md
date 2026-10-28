@@ -30,7 +30,8 @@ conservative: when depwave can't see a dependency, it runs more tests, never few
 
 | Change | Selects |
 |---|---|
-| Lockfile, root `package.json`, workspace config, `depwave.config.json` | every test |
+| `pnpm-lock.yaml` | the packages whose resolved dependencies changed, and their dependents ([details](#lockfile-changes)) |
+| Other lockfiles (npm, yarn, bun), root `package.json`, workspace config, `depwave.config.json` | every test |
 | CI definitions (`.github/workflows/`, `.gitlab-ci.yml`, …) and toolchain pins (`.nvmrc`, `.node-version`, `.tool-versions`, `.bun-version`, `.npmrc`) | every test: they change the environment tests run in |
 | A `tsconfig*.json` / test-runner / Babel config | everything under its directory |
 | A workspace package's `package.json` | that package and every package that depends on it |
@@ -39,6 +40,28 @@ conservative: when depwave can't see a dependency, it runs more tests, never few
 | Docs and editor/lint config (`*.md`, LICENSE, `.vscode/`, …) outside test-data dirs | nothing |
 | `import(expr)`, a test that spawns processes (`child_process`, `execa`, …), a file depwave can't parse | "may load anything in its package" |
 | `import.meta.glob('./x/*.ts')`, `require.context(…)`, `` import(`./x/${n}.ts`) `` | every matching file |
+
+### Lockfile changes
+
+Dependency bumps (Renovate, Dependabot) usually touch `pnpm-lock.yaml` and one manifest. depwave diffs the lockfile and
+selects only the workspace packages whose **resolved dependency closure** changed, even when the change is deep in the
+tree (`debug` moving to a new `ms` selects whoever uses `debug`), plus the packages that depend on them.
+
+```text
+trigger:        pnpm-lock.yaml (lockfile, 2 packages: effect 3.21.0 → 3.22.2)
+```
+
+It falls back to **every test**, and says why, whenever a change isn't confined to packages:
+
+- the root importer changed: root `node_modules` is visible to every package;
+- pnpm itself changed (the env document of pnpm 11+ lockfiles), or `settings`, `overrides` or `patchedDependencies` did;
+- a changed package is hoisted to the root (`*eslint*`, `*prettier*`, your `public-hoist-pattern`), or
+  `shamefully-hoist` / `node-linker=hoisted` is set;
+- the lockfile is new or deleted, unparseable, or in a format other than v6/v9.
+
+Replaying every lockfile commit in the history of the tRPC and Vite clones: **62%** and **32%** of test-file runs skipped
+(previously 0%). Every remaining full run had a legitimate reason: a pnpm bump, root dependencies, `overrides`, a
+hoisted eslint plugin, or a CI config change in the same commit.
 
 ## Explain a result: `depwave why`
 

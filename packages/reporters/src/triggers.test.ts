@@ -44,3 +44,28 @@ describe('trigger grouping (regression: 18 changed fixture files produced 18 not
     expect(text).toContain('trigger:        fixtures/f0.json, fixtures/f1.json, fixtures/f2.json and 15 more (data-file)');
   });
 });
+
+describe('lockfile triggers say what changed and how far it reaches', () => {
+  const render = (trigger: GlobalTrigger) => {
+    const report: ImpactReport = { base: 'b', head: 'h', granularity: 'symbol', changedFiles: [], seeds: [], globalTriggers: [trigger], impacted: [], unresolved: [] };
+    const plan = { runAll: trigger.scope === undefined, groups: [], totalTests: 10 };
+    return { md: new MarkdownReporter().render(report, plan), text: new TextReporter().render(report, plan) };
+  };
+
+  it('scoped: the change, and the packages that run', () => {
+    const { md, text } = render({ kind: 'lockfile', path: 'pnpm-lock.yaml', scope: ['pkg:a', 'pkg:b'], detail: 'clsx 2.1.0 → 2.1.1' });
+    expect(md).toContain('> `pnpm-lock.yaml` changed (lockfile): clsx 2.1.0 → 2.1.1: everything in the 2 packages that use them (and their dependents) runs.');
+    expect(text).toContain('trigger:        pnpm-lock.yaml (lockfile, 2 packages: clsx 2.1.0 → 2.1.1)');
+  });
+
+  it('everything: the reason', () => {
+    const { md, text } = render({ kind: 'lockfile', path: 'pnpm-lock.yaml', detail: "the lockfile's `settings` section changed" });
+    expect(md).toContain("> `pnpm-lock.yaml` changed (lockfile): every test runs, because the lockfile's `settings` section changed.");
+    expect(text).toContain("trigger:        pnpm-lock.yaml (lockfile, everything: the lockfile's `settings` section changed)");
+  });
+
+  it('nothing: says so instead of "0 packages"', () => {
+    const { md } = render({ kind: 'lockfile', path: 'pnpm-lock.yaml', scope: [], detail: 'resolution metadata only' });
+    expect(md).toContain("resolution metadata only; no package's dependencies changed, so nothing runs.");
+  });
+});

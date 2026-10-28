@@ -13,6 +13,7 @@ export * from './model/workspace.js';
 
 export * from './ports/cache.js';
 export * from './ports/git.js';
+export * from './ports/lockfile.js';
 export * from './ports/parser.js';
 export * from './ports/reporter.js';
 export * from './ports/resolver.js';

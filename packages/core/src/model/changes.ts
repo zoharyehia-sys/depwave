@@ -21,8 +21,9 @@ export interface Hunk {
 }
 
 /**
- * lockfile / ci-config / custom (workspace config): everything. tsconfig: everything under its directory.
+ * ci-config / custom (workspace config): everything. tsconfig: everything under its directory.
  * package-manifest: a package and its dependents. data-file: the tests of one package, which may read the file at runtime.
+ * lockfile: the packages whose resolved dependencies changed, and their dependents (everything when that can't be told).
  */
 export type GlobalTriggerKind = 'lockfile' | 'tsconfig' | 'package-manifest' | 'ci-config' | 'data-file' | 'custom';
 
@@ -31,7 +32,23 @@ export interface GlobalTrigger {
   path: string;
   /** Packages to treat as fully impacted; undefined means the whole repo. */
   scope?: NodeId[];
+  /** One line for humans: what changed (`vitest 3.2.6 → 3.2.7`), or why the whole repo is in scope. */
+  detail?: string;
 }
+
+/**
+ * What a lockfile change means for the workspace, from an adapter that understands the format. `all` (an unknown
+ * format, a settings change, a dependency every package can see) keeps the sound default: every test runs.
+ */
+export type LockfileDiff =
+  | {
+      kind: 'importers';
+      /** Repo-relative directories of the importers (workspace packages) whose resolved dependencies changed; '' = root. */
+      importers: string[];
+      /** What changed, for reports: `vitest 3.2.6 → 3.2.7`, `+ left-pad 1.3.0`, `- request 2.88.2`. */
+      changes: string[];
+    }
+  | { kind: 'all'; reason: string };
 
 export interface ChangeSet {
   /** Changed symbols/files on either side of the diff (old side catches deletions). */

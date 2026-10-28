@@ -1,0 +1,131 @@
+{
+  "$schema": "../expected-impact.schema.json",
+  "description": "Five-package pnpm workspace (app → ui → utils, plus logger and docs-site) with a v9 lockfile: a lockfile change selects only the packages whose resolved dependencies changed, and their dependents.",
+  "policy": "conservative",
+  "scenarios": [
+    {
+      "name": "direct-dependency-bump",
+      "description": "clsx is used by ui only: ui and its dependent app run; utils, logger and docs-site don't.",
+      "changes": [
+        { "op": "modify", "path": "pnpm-lock.yaml", "find": "        specifier: ^2.1.0\n        version: 2.1.0", "replace": "        specifier: ^2.1.0\n        version: 2.1.1" },
+        { "op": "modify", "path": "pnpm-lock.yaml", "find": "  clsx@2.1.0:\n    resolution: {integrity: sha512-clsx-2.1.0}", "replace": "  clsx@2.1.1:\n    resolution: {integrity: sha512-clsx-2.1.1}" },
+        { "op": "modify", "path": "pnpm-lock.yaml", "find": "  clsx@2.1.0: {}", "replace": "  clsx@2.1.1: {}" }
+      ],
+      "expected": {
+        "file": { "impactedTests": ["packages/app/src/page.test.ts", "packages/ui/src/badge.test.ts"] }
+      }
+    },
+    {
+      "name": "shared-dependency-bump",
+      "description": "ms is a direct dependency of utils and a transitive one of logger (via debug): both, plus utils' dependents, run.",
+      "changes": [
+        { "op": "modify", "path": "pnpm-lock.yaml", "find": "        specifier: ^2.1.2\n        version: 2.1.2", "replace": "        specifier: ^2.1.2\n        version: 2.1.3" },
+        { "op": "modify", "path": "pnpm-lock.yaml", "find": "  ms@2.1.2:\n    resolution: {integrity: sha512-ms-2.1.2}", "replace": "  ms@2.1.3:\n    resolution: {integrity: sha512-ms-2.1.3}" },
+        { "op": "modify", "path": "pnpm-lock.yaml", "find": "    dependencies:\n      ms: 2.1.2", "replace": "    dependencies:\n      ms: 2.1.3" },
+        { "op": "modify", "path": "pnpm-lock.yaml", "find": "  ms@2.1.2: {}", "replace": "  ms@2.1.3: {}" }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "packages/app/src/page.test.ts",
+            "packages/logger/src/log.test.ts",
+            "packages/ui/src/badge.test.ts",
+            "packages/utils/src/duration.test.ts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "transitive-only-bump",
+      "description": "debug moves to ms 2.1.3 while utils keeps 2.1.2: no importer entry changes, yet logger's closure did. Only logger runs.",
+      "changes": [
+        { "op": "modify", "path": "pnpm-lock.yaml", "find": "  ms@2.1.2:\n    resolution: {integrity: sha512-ms-2.1.2}\n", "replace": "  ms@2.1.2:\n    resolution: {integrity: sha512-ms-2.1.2}\n\n  ms@2.1.3:\n    resolution: {integrity: sha512-ms-2.1.3}\n" },
+        { "op": "modify", "path": "pnpm-lock.yaml", "find": "    dependencies:\n      ms: 2.1.2", "replace": "    dependencies:\n      ms: 2.1.3" },
+        { "op": "modify", "path": "pnpm-lock.yaml", "find": "  ms@2.1.2: {}", "replace": "  ms@2.1.2: {}\n\n  ms@2.1.3: {}" }
+      ],
+      "expected": {
+        "file": { "impactedTests": ["packages/logger/src/log.test.ts"] }
+      }
+    },
+    {
+      "name": "integrity-only-change",
+      "description": "Same version, different tarball (a republish or a patch): the package that uses it still runs.",
+      "changes": [{ "op": "modify", "path": "pnpm-lock.yaml", "find": "sha512-left-pad-1.3.0", "replace": "sha512-left-pad-1.3.0-republished" }],
+      "expected": {
+        "file": { "impactedTests": ["packages/docs-site/src/pad.test.ts"] }
+      }
+    },
+    {
+      "name": "root-dependency-bump",
+      "description": "The root's node_modules is visible to every package: a root devDependency change runs everything.",
+      "changes": [
+        { "op": "modify", "path": "pnpm-lock.yaml", "find": "        specifier: ^5.4.0\n        version: 5.4.5", "replace": "        specifier: ^5.4.0\n        version: 5.4.6" },
+        { "op": "modify", "path": "pnpm-lock.yaml", "find": "  typescript@5.4.5:\n    resolution: {integrity: sha512-typescript-5.4.5}", "replace": "  typescript@5.4.6:\n    resolution: {integrity: sha512-typescript-5.4.6}" },
+        { "op": "modify", "path": "pnpm-lock.yaml", "find": "  typescript@5.4.5: {}", "replace": "  typescript@5.4.6: {}" }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "packages/app/src/page.test.ts",
+            "packages/docs-site/src/pad.test.ts",
+            "packages/logger/src/log.test.ts",
+            "packages/ui/src/badge.test.ts",
+            "packages/utils/src/duration.test.ts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "lockfile-settings-change",
+      "description": "Settings change how everything resolves: everything runs.",
+      "changes": [{ "op": "modify", "path": "pnpm-lock.yaml", "find": "autoInstallPeers: true", "replace": "autoInstallPeers: false" }],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "packages/app/src/page.test.ts",
+            "packages/docs-site/src/pad.test.ts",
+            "packages/logger/src/log.test.ts",
+            "packages/ui/src/badge.test.ts",
+            "packages/utils/src/duration.test.ts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "publicly-hoisted-dependency",
+      "description": "pnpm hoists *eslint* packages to the root node_modules, where any package can load them undeclared: everything runs, even though only docs-site declares it.",
+      "changes": [
+        {
+          "op": "modify",
+          "path": "pnpm-lock.yaml",
+          "find": "      left-pad:\n        specifier: ^1.3.0\n        version: 1.3.0\n",
+          "replace": "      eslint-plugin-lock:\n        specifier: ^1.0.0\n        version: 1.0.0\n      left-pad:\n        specifier: ^1.3.0\n        version: 1.3.0\n"
+        },
+        { "op": "modify", "path": "pnpm-lock.yaml", "find": "  left-pad@1.3.0:\n    resolution:", "replace": "  eslint-plugin-lock@1.0.0:\n    resolution: {integrity: sha512-eslint-plugin-lock-1.0.0}\n\n  left-pad@1.3.0:\n    resolution:" },
+        { "op": "modify", "path": "pnpm-lock.yaml", "find": "  left-pad@1.3.0: {}", "replace": "  eslint-plugin-lock@1.0.0: {}\n\n  left-pad@1.3.0: {}" }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "packages/app/src/page.test.ts",
+            "packages/docs-site/src/pad.test.ts",
+            "packages/logger/src/log.test.ts",
+            "packages/ui/src/badge.test.ts",
+            "packages/utils/src/duration.test.ts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "lockfile-and-code",
+      "description": "A dependency bump plus a code change elsewhere: the union of both, nothing more.",
+      "changes": [
+        { "op": "modify", "path": "pnpm-lock.yaml", "find": "sha512-left-pad-1.3.0", "replace": "sha512-left-pad-1.3.0-republished" },
+        { "op": "modify", "path": "packages/logger/src/log.ts", "find": "createDebug('lock')", "replace": "createDebug('lock:app')" }
+      ],
+      "expected": {
+        "file": { "impactedTests": ["packages/docs-site/src/pad.test.ts", "packages/logger/src/log.test.ts"] }
+      }
+    }
+  ]
+}
