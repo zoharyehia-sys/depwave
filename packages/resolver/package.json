@@ -2,6 +2,7 @@
   "name": "@depwave/resolver",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "description": "Module resolution (oxc-resolver) with probe tracking.",
   "type": "module",
   "exports": {

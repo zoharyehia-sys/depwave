@@ -1,0 +1,45 @@
+name: README example
+
+# The selective-run workflow from docs/github-action.md, run for real so the documented example can't rot. Keep the
+# depwave steps identical to the doc; only the setup steps (this repo's pnpm install) and `comment: 'false'` differ
+# (depwave-pr.yml already posts the comment).
+on: pull_request
+
+permissions:
+  contents: read
+
+jobs:
+  example:
+    name: README example (selective tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # depwave needs the merge base
+      - uses: zoharyehia-sys/depwave@ad89e7cbf88996aa4509391b5bab1b88c9535179 # main on 2026-10-28
+        id: depwave
+        continue-on-error: true # if the analysis fails, run everything below instead of nothing
+        with:
+          comment: 'false'
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Run all tests
+        if: steps.depwave.outcome != 'success' || steps.depwave.outputs.run-all == 'true'
+        run: npx vitest run
+      - name: Run impacted tests
+        if: steps.depwave.outcome == 'success' && steps.depwave.outputs.run-all != 'true' && steps.depwave.outputs.impacted-tests != '0'
+        env:
+          TESTS: ${{ steps.depwave.outputs.tests }} # PR-controlled paths: pass them through env, never inline in run:
+        run: npx vitest run $TESTS
+      - name: Report what ran
+        if: always()
+        env:
+          OUTCOME: ${{ steps.depwave.outcome }}
+          RUN_ALL: ${{ steps.depwave.outputs.run-all }}
+          IMPACTED: ${{ steps.depwave.outputs.impacted-tests }}
+          TOTAL: ${{ steps.depwave.outputs.total-tests }}
+        run: echo "depwave outcome=$OUTCOME run-all=$RUN_ALL impacted=$IMPACTED of $TOTAL" >> "$GITHUB_STEP_SUMMARY"

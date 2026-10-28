@@ -2,6 +2,7 @@
   "name": "@depwave/parser",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "description": "Tree-sitter parsing: source files to FileFacts.",
   "type": "module",
   "exports": {

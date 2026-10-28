@@ -2,6 +2,7 @@
   "name": "@depwave/cache",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "description": "SQLite-backed facts, resolution and snapshot cache.",
   "type": "module",
   "exports": {
