@@ -24,8 +24,15 @@ export interface ShadowResult {
   runAll: boolean;
   /** Test files depwave selected. */
   selected: number;
-  /** Test files that appear in the results (the full run). */
+  /** Test files that appear in the results (the full run, unless `partial`). */
   ran: number;
+  /**
+   * The results are not a full run: they miss a selected test file, or contain no file depwave sees as a test.
+   * The verdict then covers only the files in the results, and `ran` is no denominator for the savings.
+   */
+  partial: boolean;
+  /** Every test file in the head revision (the plan's `totalTests`): the savings denominator when `partial`. */
+  totalTests?: number;
   /** Failing test files, sorted. */
   failed: string[];
   /** Failing test files depwave selected. */

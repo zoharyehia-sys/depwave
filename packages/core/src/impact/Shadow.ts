@@ -13,6 +13,7 @@ export function compareShadow(plan: TestPlan, run: ShadowRun, isTest: (path: str
   const caught = plan.runAll ? failed : failed.filter((p) => selected.has(p));
   const missed = plan.runAll ? [] : failed.filter((p) => !selected.has(p));
   const unrecognized = [...byFile.keys()].filter((p) => !isTest(p)).sort();
+  const partial = unrecognized.length === byFile.size || [...selected].some((p) => !byFile.has(p));
 
   let verdict: ShadowResult['verdict'] = 'sound';
   if (missed.length > 0) verdict = 'missed';
@@ -23,6 +24,8 @@ export function compareShadow(plan: TestPlan, run: ShadowRun, isTest: (path: str
     runAll: plan.runAll,
     selected: selected.size,
     ran: byFile.size,
+    partial,
+    ...(plan.totalTests === undefined ? {} : { totalTests: plan.totalTests }),
     failed,
     caught,
     missed,
