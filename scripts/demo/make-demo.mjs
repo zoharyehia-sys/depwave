@@ -7,7 +7,7 @@
 //
 // Author and dates are fixed, so the commit hashes, and therefore depwave's output, match the README exactly.
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -21,6 +21,14 @@ const write = (path, content) => {
 };
 const pkg = (name, deps = {}) => `${JSON.stringify({ name, version: '1.0.0', type: 'module', exports: './src/index.ts', dependencies: deps }, null, 2)}\n`;
 
+// The directory is wiped first, so only ever wipe an earlier demo.
+if (existsSync(dir) && readdirSync(dir).length > 0) {
+  const manifest = join(dir, 'package.json');
+  if (!existsSync(manifest) || JSON.parse(readFileSync(manifest, 'utf8')).name !== 'acme') {
+    console.error(`${dir} is not empty and is not an earlier demo; pick another directory`);
+    process.exit(1);
+  }
+}
 rmSync(dir, { recursive: true, force: true });
 write('package.json', '{ "name": "acme", "private": true, "devDependencies": { "vitest": "^3.2.3" } }\n');
 write('pnpm-workspace.yaml', "packages:\n  - 'packages/*'\n");
@@ -53,4 +61,14 @@ git('commit', '-q', '-m', 'initial');
 git('checkout', '-q', '-b', 'round-prices');
 write('packages/utils/src/money.ts', 'export function formatCurrency(cents: number): string {\n  return `$${Math.round(cents / 100)}`;\n}\n');
 git('commit', '-q', '-am', 'round prices to whole dollars');
+
+// A full run on the branch, with one failure a selective run would have skipped, for `depwave shadow --results
+// results.json`. Paths are repo-relative, which shadow accepts (Vitest itself writes absolute paths).
+const tests = ['utils/src/money', 'utils/src/dates', 'ui/src/PriceTag', 'ui/src/DateLabel', 'app/src/checkout', 'app/src/profile'];
+const testResults = tests.map((t) => {
+  const status = t === 'app/src/profile' ? 'failed' : 'passed';
+  return { name: `packages/${t}.test.ts`, status, assertionResults: [{ status }] };
+});
+write('results.json', `${JSON.stringify({ testResults }, null, 2)}\n`);
+write('.git/info/exclude', 'results.json\n');
 console.log(`demo monorepo in ${dir}, on branch round-prices:\n${git('log', '--oneline', 'main~0', 'round-prices')}`);

@@ -4,8 +4,8 @@
 //
 //   node scripts/bench/readme-benchmark.mjs [work dir]     (default: <tmp>/depwave-bench)
 //
-// Clones are partial (no blobs until depwave reads them) and never checked out: depwave reads git objects only, and
-// some of these repositories have paths too long to check out on Windows. Needs network access; takes a few minutes.
+// Clones are shallow and never checked out: depwave reads git objects only, and some of these repositories have paths
+// too long to check out on Windows. Needs network access; takes a few minutes.
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -39,7 +39,9 @@ for (const { name, repo, sha, depth, lockfile } of REPOS) {
   }
   if (headOf(dir) !== sha) {
     console.log(`fetching ${repo} at ${sha.slice(0, 7)} (depth ${depth})…`);
-    git(dir, 'fetch', '-q', '--filter=blob:none', `--depth=${depth}`, 'origin', sha);
+    // Full blobs: with --filter=blob:none, depwave's `git cat-file --batch` would fetch each missing blob in its own
+    // round trip, which turns minutes into hours.
+    git(dir, '-c', 'core.longpaths=true', 'fetch', '-q', `--depth=${depth}`, 'origin', sha);
     git(dir, 'update-ref', 'HEAD', sha); // no checkout
   }
   console.log(`\n=== ${name} (${lockfile})`);

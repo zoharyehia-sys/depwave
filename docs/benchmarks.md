@@ -44,9 +44,9 @@ node scripts/bench/lockfile-replay.mjs <repo> <lockfile>   # any repository you 
 ```
 
 [`readme-benchmark.mjs`](../scripts/bench/readme-benchmark.mjs) fetches each repository at its pinned commit as a
-partial, shallow clone without checking it out (depwave reads git objects only, and some of these repositories have
+shallow clone without checking it out (depwave reads git objects only, and some of these repositories have
 paths too long to check out on Windows). It then runs [`lockfile-replay.mjs`](../scripts/bench/lockfile-replay.mjs)
-on each one and prints the summary table. It needs network access and takes several minutes.
+on each one and prints the summary table. It needs network access and took 4 minutes on the machine above.
 
 ## What this does and doesn't show
 

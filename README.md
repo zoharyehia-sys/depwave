@@ -193,6 +193,9 @@ npx vitest run --reporter=default --reporter=json --outputFile.json=test-results
 depwave shadow --base origin/main --results test-results.json
 ```
 
+On the demo repository, where `make-demo.mjs` also writes the results of a full run in which `profile.test.ts`
+failed:
+
 ```console
 $ depwave shadow --base main --results results.json
 depwave shadow 2f61664a3bd4...d0d3fed2d141: 1 failing test file NOT selected ✘
