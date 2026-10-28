@@ -177,6 +177,34 @@ describe('depwave shadow', () => {
     }
   });
 
+  it('measures savings against every test file when the results are partial, or recognize none', async () => {
+    const files = new Map([['package.json', '{ "name": "demo" }\n']]);
+    for (const name of ['a', 'b']) {
+      files.set(`src/${name}.ts`, `export const ${name} = 1;\n`);
+      for (const n of [1, 2, 3]) files.set(`src/${name}${n}.test.ts`, `import { ${name} } from './${name}';\nconsole.log(${name});\n`);
+    }
+    const { repo, commit: base } = TempRepo.from(files);
+    try {
+      repo.write('src/a.ts', 'export const a = 2;\n');
+      const head = repo.commit('change a');
+      const args = ['shadow', '--cwd', repo.dir, '--base', base, '--head', head, '--no-cache'];
+
+      const partial = await run([...args, '--results', results(repo.dir, [], ['src/a1.test.ts'])]);
+      expect(partial.code).toBe(0);
+      expect(partial.stdout).toContain('partial results (1 of 6 test files): a selective run would have run 3 of 6 test files (50% skipped)');
+      expect(partial.stdout).not.toContain('of 1 test file');
+
+      // A failure outside the repository: no recognized file, and the failure can't be traced.
+      const none = await run([...args, '--results', results(repo.dir, ['../elsewhere/x.test.ts'], []), '--format', 'json']);
+      expect(none.code).toBe(0);
+      expect(JSON.parse(none.stdout).shadow).toMatchObject({ verdict: 'inconclusive', selected: 3, ran: 0, partial: true, totalTests: 6 });
+      const noneText = await run([...args, '--results', results(repo.dir, ['../elsewhere/x.test.ts'], [])]);
+      expect(noneText.stdout).toContain('partial results (0 of 6 test files): a selective run would have run 3 of 6 test files (50% skipped)');
+    } finally {
+      repo.dispose();
+    }
+  });
+
   it('fails fast on a results file with no tests, before analyzing anything', async () => {
     const { repo } = TempRepo.from(new Map([['package.json', '{ "name": "demo" }\n']]));
     try {

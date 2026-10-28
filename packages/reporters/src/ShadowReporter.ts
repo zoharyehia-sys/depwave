@@ -9,12 +9,21 @@ export interface ShadowContext {
 const MAX_LISTED = 10;
 const short = (rev: string) => (/^[0-9a-f]{40}$/.test(rev) ? rev.slice(0, 12) : rev);
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const capitalize = (text: string) => `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 
 /** What a selective run would have saved: "would have run 3 of 41 test files (93% skipped)". */
 function savings(result: ShadowResult): string {
   if (result.runAll) return 'a global trigger selected every test';
-  const skipped = result.ran > 0 ? ` (${Math.max(0, Math.round((1 - result.selected / result.ran) * 100))}% skipped)` : '';
-  return `a selective run would have run ${result.selected} of ${plural(result.ran, 'test file')}${skipped}`;
+  const total = result.partial ? result.totalTests : result.ran;
+  if (total === undefined) return `a selective run would have run ${plural(result.selected, 'test file')}`;
+  const skipped = total > 0 ? ` (${Math.max(0, Math.round((1 - result.selected / total) * 100))}% skipped)` : '';
+  return `a selective run would have run ${result.selected} of ${plural(total, 'test file')}${skipped}`;
+}
+
+/** How much of the repo partial results cover: "1 of 6 test files". */
+function coverage(result: ShadowResult): string {
+  const covered = result.ran - result.unrecognized.length;
+  return result.totalTests === undefined ? plural(covered, 'test file') : `${covered} of ${plural(result.totalTests, 'test file')}`;
 }
 
 function headline(result: ShadowResult): string {
@@ -34,10 +43,13 @@ const MISSED_HINT = 'Each one is either a flaky test or a dependency depwave did
  *   depwave shadow 0123456789ab...HEAD: 1 failing test file NOT selected ✘
  *     a selective run would have run 3 of 41 test files (93% skipped)
  *     missed: packages/app/src/cart.test.ts
+ *
+ * Partial results replace the savings line with "partial results (1 of 41 test files): a selective run would have run 3 of 41 …".
  */
 export function renderShadowText(result: ShadowResult, ctx: ShadowContext): string {
   const mark = result.verdict === 'sound' ? '✔' : result.verdict === 'missed' ? '✘' : '?';
-  const lines = [`depwave shadow ${short(ctx.base)}...${short(ctx.head)}: ${headline(result)} ${mark}`, `  ${savings(result)}`];
+  const summary = result.partial ? `partial results (${coverage(result)}): ${savings(result)}` : savings(result);
+  const lines = [`depwave shadow ${short(ctx.base)}...${short(ctx.head)}: ${headline(result)} ${mark}`, `  ${summary}`];
   if (result.caught.length > 0) lines.push(`  caught: ${listPaths(result.caught, MAX_LISTED)}`);
   for (const path of result.missed) lines.push(`  missed: ${path}${result.unrecognized.includes(path) ? ' (not recognized as a test file)' : ''}`);
   if (result.missed.length > 0) lines.push(`  ${MISSED_HINT}`);
@@ -48,7 +60,10 @@ export function renderShadowText(result: ShadowResult, ctx: ShadowContext): stri
 /** A section for the PR comment / job summary (appended under the impact report). */
 export function renderShadowMarkdown(result: ShadowResult, ctx: ShadowContext): string {
   const icon = result.verdict === 'sound' ? '✅' : result.verdict === 'missed' ? '❌' : '⚠️';
-  const lines = [`#### 🕵️ Shadow check: ${headline(result)} ${icon}`, '', `Compared against the full test run of \`${short(ctx.head)}\`: ${savings(result)}.`, ''];
+  const summary = result.partial
+    ? `The results for \`${short(ctx.head)}\` are partial (${coverage(result)}), so only the tests in them were checked. ${capitalize(savings(result))}.`
+    : `Compared against the full test run of \`${short(ctx.head)}\`: ${savings(result)}.`;
+  const lines = [`#### 🕵️ Shadow check: ${headline(result)} ${icon}`, '', summary, ''];
   if (result.missed.length > 0) {
     lines.push('> [!CAUTION]', '> These tests failed, but depwave did not select them:');
     for (const path of result.missed.slice(0, MAX_LISTED)) lines.push(`> - \`${path}\`${result.unrecognized.includes(path) ? ' (not recognized as a test file)' : ''}`);

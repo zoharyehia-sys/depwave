@@ -10,7 +10,19 @@ const isTest = (p: string) => p.endsWith('.test.ts');
 describe('compareShadow', () => {
   it('is sound when every failing test was selected', () => {
     const result = compareShadow(plan(['a.test.ts']), run([{ path: 'a.test.ts', status: 'failed' }, { path: 'b.test.ts', status: 'passed' }]), isTest);
-    expect(result).toMatchObject({ verdict: 'sound', selected: 1, ran: 2, failed: ['a.test.ts'], caught: ['a.test.ts'], missed: [] });
+    expect(result).toMatchObject({ verdict: 'sound', selected: 1, ran: 2, partial: false, failed: ['a.test.ts'], caught: ['a.test.ts'], missed: [] });
+  });
+
+  it('flags results that miss a selected test file as partial, and carries the repo total for the savings', () => {
+    const selection = { ...plan(['a.test.ts', 'b.test.ts', 'c.test.ts']), totalTests: 6 };
+    const result = compareShadow(selection, run([{ path: 'a.test.ts', status: 'passed' }]), isTest);
+    expect(result).toMatchObject({ verdict: 'sound', selected: 3, ran: 1, partial: true, totalTests: 6 });
+  });
+
+  it('flags results with no recognized test file as partial, even with nothing selected', () => {
+    const selection = { ...plan(['a.test.ts', 'b.test.ts', 'c.test.ts']), totalTests: 6 };
+    expect(compareShadow(selection, run([], 1), isTest)).toMatchObject({ verdict: 'inconclusive', ran: 0, partial: true, totalTests: 6 });
+    expect(compareShadow(plan([]), run([{ path: 'e2e/y.ts', status: 'passed' }]), isTest)).toMatchObject({ ran: 1, partial: true });
   });
 
   it('reports a failing test that was not selected as a miss', () => {
