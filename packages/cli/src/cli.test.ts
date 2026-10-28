@@ -137,6 +137,42 @@ describe('repoRelative (depwave why target paths)', () => {
   });
 });
 
+describe('depwave graph', () => {
+  it('draws packages, or one package\'s files, from a real repository; flags must make sense together', async () => {
+    const { repo } = TempRepo.from(
+      new Map([
+        ['package.json', '{ "name": "root", "workspaces": ["packages/*"] }\n'],
+        ['packages/a/package.json', '{ "name": "@x/a", "dependencies": { "@x/b": "*" } }\n'],
+        ['packages/a/src/a.ts', "import { b } from '@x/b';\nexport const a = b;\n"],
+        ['packages/b/package.json', '{ "name": "@x/b", "main": "src/b.ts" }\n'],
+        ['packages/b/src/b.ts', 'export const b = 1;\n'],
+      ]),
+    );
+    try {
+      const packages = await run(['graph', '--cwd', repo.dir, '--no-cache']);
+      expect(packages.code).toBe(0);
+      expect(packages.stdout).toBe('flowchart LR\n  n0["@x/a"]\n  n1["@x/b"]\n  n2["root"]\n  n0 --> n1\n');
+
+      const files = await run(['graph', '--cwd', repo.dir, '--level', 'file', '--package', '@x/a', '--format', 'json', '--no-cache']);
+      expect(JSON.parse(files.stdout)).toEqual({
+        level: 'file',
+        package: '@x/a',
+        nodes: [
+          { id: '@x/b', kind: 'package' },
+          { id: 'packages/a/src/a.ts', kind: 'file' },
+        ],
+        edges: [{ from: 'packages/a/src/a.ts', to: '@x/b', kind: 'imports' }],
+      });
+
+      const bad = await run(['graph', '--cwd', repo.dir, '--package', '@x/a']);
+      expect(bad.code).toBe(EXIT_FAILURE);
+      expect(bad.stderr).toBe('depwave: --package needs --level file\n');
+    } finally {
+      repo.dispose();
+    }
+  });
+});
+
 describe('depwave shadow', () => {
   const results = (dir: string, failing: string[], passing: string[]) => {
     const file = join(dir, 'results.json');
