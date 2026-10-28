@@ -10,6 +10,8 @@ Every command, option and exit code of the `depwave` CLI, plus configuration and
 | `depwave impact` | Lists the test files a diff impacts, grouped by package |
 | `depwave why <file>` | Shows the shortest dependency chain from a change to `<file>`, or says it isn't impacted |
 | `depwave shadow --results <file>` | Checks a full test run's failures against what depwave would have selected ([shadow mode](../README.md#shadow-mode)) |
+| `depwave cycles` | Lists import cycles: groups of files that import each other, each shown as its shortest loop |
+| `depwave graph` | Draws workspace packages, or the files of one package, as a Mermaid or Graphviz diagram |
 | `depwave cache stats` | Shows what the cache holds, and its size |
 | `depwave cache clear` | Empties the cache |
 
@@ -26,10 +28,23 @@ Every command, option and exit code of the `depwave` CLI, plus configuration and
 | `--explain <n>` | `3` | `impact` | With `--format markdown`, includes `depwave why` paths for the top `n` tests (`0` for none) |
 | `--results <file>` | required | `shadow` | Vitest/Jest JSON or JUnit XML, detected from the content. Repeatable |
 | `--results-root <dir>` | repository root | `shadow` | Directory that relative paths in the results are resolved from |
+| `--rev <rev>` | `HEAD` | `cycles`, `graph` | Revision to inspect. `WORKTREE` includes uncommitted and untracked changes |
+| `--include-type-only` | off | `cycles` | Count `import type` edges too. They're erased at runtime, so they can't cause load-order bugs |
+| `--level <l>` | `package` | `graph` | `package`: declared workspace dependencies. `file`: imports between files |
+| `--package <name>` | all | `graph` | With `--level file`, only this package's files. Imports that leave it point at the target package |
 | `--cwd <dir>` | current directory | all | Repository to analyze |
-| `--no-cache` | cache on | `impact`, `why`, `shadow` | Skips the `.depwave/` cache |
+| `--no-cache` | cache on | all but `cache` | Skips the `.depwave/` cache |
 
 `depwave why` accepts a path relative to the current directory, an absolute path, or a repo-relative path.
+
+`cycles` follows runtime imports and re-exports. Dynamic `import()` is skipped, because it loads only when called.
+`graph --format` takes `mermaid` (the default), `dot` (render it with `dot -Tsvg`) or `json`. At the file level, dynamic
+imports are drawn dashed, type-only imports dotted, test files filled, and files in an import cycle outlined in red.
+
+```bash
+depwave cycles --rev WORKTREE                       # lint uncommitted work for cycles
+depwave graph --level file --package @acme/ui --format dot | dot -Tsvg > ui.svg
+```
 
 ## Exit codes
 
@@ -38,6 +53,7 @@ Every command, option and exit code of the `depwave` CLI, plus configuration and
 | `0` | Success. This includes `why` reporting that a file isn't impacted, and a `sound` or `inconclusive` shadow verdict |
 | `1` | Failure, with a one-line message on stderr: not a git repository, an unknown revision, an invalid manifest or config, an invalid option, a path `why` doesn't know, or a results file without tests |
 | `3` | `shadow`: a failing test file was not selected |
+| `4` | `cycles`: at least one import cycle exists, so CI can use it as a lint |
 
 ## JSON output
 
@@ -50,7 +66,9 @@ Every command, option and exit code of the `depwave` CLI, plus configuration and
   distance and score, and `unresolved` imports.
 
 `depwave why --format json` and `depwave shadow --format json` print the explanation and the shadow result, plus the
-revisions compared. The JSON shapes aren't stable yet.
+revisions compared. `depwave cycles --format json` prints each cycle's sorted `files` and one `loop`, plus unresolved
+imports (a cycle through one can't be seen). `depwave graph --format json` prints `nodes` and `edges`. The JSON shapes
+aren't stable yet.
 
 ## Configuration
 

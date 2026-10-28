@@ -530,7 +530,7 @@ checkout.test.ts
 - ✅ `DiffAnalyzer` (file-level + global triggers), `ImpactPredictor` (reverse BFS over base ∪ head), `TestSelector`.
 - ✅ CLI: `depwave impact --base <ref> [--head <ref>|WORKTREE] [--format text|json] [--cwd <dir>]`. `depwave.config.json` `ignore`.
 - ✅ `CacheManager` (SQLite, WAL): L1 facts and L3 commit snapshots wired in; L2 stored but unused (see §4.1). `depwave cache stats|clear`, `--no-cache`.
-- ⏳ `depwave graph --format mermaid|dot`.
+- ✅ `depwave graph [--level package|file] [--package] [--format mermaid|dot|json]`: declared workspace dependencies, or one package's imports (dynamic and type-only styled, tests and cycle members highlighted). Mermaid output checked by rendering it with mermaid@10.9.1.
 - ✅ **Exit (fixtures):** all 19 golden scenarios pass end to end. Mutation-checked: disabling wildcard widening or
   base-graph traversal each breaks exactly the scenario that pins it. ⏳ **Exit (scale):** the 10k-file benchmark needs the cache.
 
@@ -602,7 +602,7 @@ depwave impact --base origin/main --format json    # machine-readable for CI
 depwave tests  --base origin/main --runner vitest  # prints runner-ready args
 depwave why    packages/app/src/checkout.test.ts   # explain one impacted node
 depwave shadow --results test-results.json         # did depwave select every failing test?
-depwave graph  --package @acme/ui --format mermaid # visualize
+depwave graph  --level file --package @acme/ui      # visualize (mermaid, dot or json)
 depwave cycles                                     # Tarjan SCC lint
 depwave cache  stats|prune|clear
 ```

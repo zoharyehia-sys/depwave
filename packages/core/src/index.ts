@@ -21,6 +21,7 @@ export * from './ports/workspace.js';
 
 export * from './graph/DependencyGraph.js';
 export * from './graph/cycles.js';
+export * from './graph/export.js';
 export * from './build/GraphBuilder.js';
 export * from './diff/DiffAnalyzer.js';
 export * from './impact/ImpactPredictor.js';

@@ -297,8 +297,9 @@ in each case, shadow mode in CI, and other CI systems.
 | Runtime | Node.js 22+ with git. CI runs on Ubuntu and Windows, including a checkout path with spaces and non-ASCII characters | macOS isn't tested in CI |
 | Distribution | Source build, GitHub Action | npm package, release tags |
 
-Planned but not built yet: dependency-graph export, cycle detection, type-aware method binding, and plugins for
-framework conventions. See the [roadmap](ARCHITECTURE.md#5-implementation-roadmap).
+Beyond test selection, `depwave cycles` lints for import cycles and `depwave graph` draws the dependency graph as
+Mermaid or Graphviz ([CLI reference](docs/cli.md)). Planned but not built yet: type-aware method binding, and plugins
+for framework conventions. See the [roadmap](ARCHITECTURE.md#5-implementation-roadmap).
 
 ## Documentation
 

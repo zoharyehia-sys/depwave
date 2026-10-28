@@ -4,3 +4,4 @@ export { renderWhy, type WhyContext } from './WhyReporter.js';
 export { COMMENT_MARKER, MarkdownReporter } from './MarkdownReporter.js';
 export { renderShadowMarkdown, renderShadowText, type ShadowContext } from './ShadowReporter.js';
 export { renderCyclesText, type CyclesContext } from './CyclesReporter.js';
+export { renderDot, renderMermaid } from './GraphReporter.js';

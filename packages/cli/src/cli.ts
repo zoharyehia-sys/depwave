@@ -1,6 +1,7 @@
 import { Builtins, Cli } from 'clipanion';
 import { CacheClearCommand, CacheStatsCommand } from './commands/CacheCommands.js';
 import { CyclesCommand } from './commands/CyclesCommand.js';
+import { GraphCommand } from './commands/GraphCommand.js';
 import { ImpactCommand } from './commands/ImpactCommand.js';
 import { ShadowCommand } from './commands/ShadowCommand.js';
 import { WhyCommand } from './commands/WhyCommand.js';
@@ -16,6 +17,7 @@ export function createCli(): Cli {
   cli.register(WhyCommand);
   cli.register(ShadowCommand);
   cli.register(CyclesCommand);
+  cli.register(GraphCommand);
   cli.register(CacheStatsCommand);
   cli.register(CacheClearCommand);
   return cli;
