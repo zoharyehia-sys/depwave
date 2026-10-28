@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Confidence, type GraphEdge } from '../model/graph.js';
 import { nodeId } from '../model/ids.js';
-import { DependencyGraph, UnionGraph } from './DependencyGraph.js';
+import { DependencyGraph, NO_PACKAGE, UnionGraph } from './DependencyGraph.js';
 
 const f = (path: string) => nodeId.file(path);
 const edge = (from: string, to: string, ownerFile = from, kind: GraphEdge['kind'] = 'IMPORTS'): GraphEdge => ({
@@ -44,6 +44,9 @@ describe('DependencyGraph', () => {
     g.addNode({ id: f('p/a.ts'), kind: 'file', path: 'p/a.ts', packageId: 'pkg:p', contentHash: '', isTest: false, hasSideEffects: false });
     g.addEdge({ from: 'pkg:p', to: f('p/a.ts'), kind: 'CONTAINS', confidence: Confidence.certain, ownerFile: f('p/a.ts') });
     expect([...g.filesOf('pkg:p')].map((n) => n.path)).toEqual(['p/a.ts']);
+    // Regression: files outside every package have no CONTAINS edge, so triggers scoped to NO_PACKAGE seeded nothing.
+    g.addNode({ id: f('scripts/x.ts'), kind: 'file', path: 'scripts/x.ts', contentHash: '', isTest: false, hasSideEffects: false });
+    expect([...g.filesOf(NO_PACKAGE)].map((n) => n.path)).toEqual(['scripts/x.ts']);
   });
 });
 

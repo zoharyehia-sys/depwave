@@ -9,7 +9,7 @@ import type { ResolverPort } from '../ports/resolver.js';
 import { ReExportResolver } from './ReExportResolver.js';
 
 /** Bump whenever linking output can change for the same inputs: it's part of every snapshot cache key. */
-export const GRAPH_VERSION = 4;
+export const GRAPH_VERSION = 5;
 
 /** Modules that start processes or workers: a test using them can execute any file of its package. */
 const SPAWN_MODULES = new Set([
@@ -87,7 +87,12 @@ class Linker {
     this.addPackages();
     for (const file of this.input.inventory.files) {
       const facts = this.input.facts.get(file.path);
-      this.addFile(file.path, { language: file.language, contentHash: file.contentHash, hasSideEffects: facts?.hasSideEffects ?? false });
+      this.addFile(file.path, {
+        language: file.language,
+        contentHash: file.contentHash,
+        hasSideEffects: facts?.hasSideEffects ?? false,
+        ...(facts ? { externals: this.externalsOf(file.path, facts) } : {}),
+      });
     }
     for (const file of this.input.inventory.files) {
       const facts = this.input.facts.get(file.path);
@@ -117,13 +122,14 @@ class Linker {
     }
   }
 
-  private addFile(path: string, details: Pick<FileNode, 'contentHash' | 'hasSideEffects'> & { language?: FileNode['language'] }): NodeId {
+  private addFile(path: string, details: Pick<FileNode, 'contentHash' | 'hasSideEffects' | 'externals'> & { language?: FileNode['language'] }): NodeId {
     const id = nodeId.file(path);
     if (this.graph.node(id)) return id;
 
     const owner = this.ownerOf(path);
     const node: FileNode = { id, kind: 'file', path, contentHash: details.contentHash, isTest: this.isTestFile(path), hasSideEffects: details.hasSideEffects };
     if (details.language !== undefined) node.language = details.language;
+    if (details.externals?.length) node.externals = details.externals;
     if (owner) node.packageId = nodeId.package(owner.name);
     this.graph.addNode(node);
     if (node.packageId) {
@@ -280,6 +286,24 @@ class Linker {
       if (to === from) continue;
       this.graph.addEdge({ from, to, kind: 'DYNAMIC_IMPORT', confidence: Confidence.likely, ownerFile, meta: { pattern } });
     }
+  }
+
+  /**
+   * Third-party packages a file loads at runtime (imports, require(), re-exports; not `import type`). Lockfile
+   * analysis needs them where node_modules is hoisted: code can import packages its manifest never declared.
+   */
+  private externalsOf(path: string, facts: FileFacts): string[] {
+    const specifiers = [
+      ...facts.imports.filter((i) => i.kind !== 'type' && !(i.bindings.length > 0 && i.bindings.every((b) => b.typeOnly))).map((i) => i.specifier),
+      ...facts.exports.filter((e) => !e.typeOnly).map((e) => e.from),
+    ];
+    const names = new Set<string>();
+    for (const specifier of specifiers) {
+      if (specifier === undefined || specifier.startsWith('.')) continue;
+      const result = this.input.resolver.resolve(path, specifier);
+      if (result.kind === 'external' && !result.packageName.startsWith('node:')) names.add(result.packageName);
+    }
+    return [...names].sort();
   }
 
   private sourceDetails(path: string): { contentHash: string; hasSideEffects: boolean; language?: FileNode['language'] } {

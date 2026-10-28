@@ -167,6 +167,15 @@ function lockfileTrigger(path: string, ctx: DiffContext): GlobalTrigger {
     if (!pkg) return { kind: 'lockfile', path, detail: `dependencies of ${dir} changed (${changed}), and it is not a workspace package` };
     for (const id of withDependents(nodeId.package(pkg.name), ctx)) scope.add(id);
   }
+  // Hoisted node_modules: code may import what its manifest never declared. Its package is affected all the same.
+  if (diff.hoisted?.length) {
+    const loaded = new Set(diff.hoisted);
+    for (const graph of [ctx.head, ctx.base]) {
+      for (const file of graph.nodes('file')) {
+        if (file.externals?.some((name) => loaded.has(name))) for (const id of withDependents(file.packageId ?? NO_PACKAGE, ctx)) scope.add(id);
+      }
+    }
+  }
   return { kind: 'lockfile', path, scope: [...scope].sort(), detail: changed };
 }
 

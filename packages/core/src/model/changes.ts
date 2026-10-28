@@ -47,6 +47,12 @@ export type LockfileDiff =
       importers: string[];
       /** What changed, for reports: `vitest 3.2.6 → 3.2.7`, `+ left-pad 1.3.0`, `- request 2.88.2`. */
       changes: string[];
+      /**
+       * Hoisted layouts (npm, yarn node-modules): every package can import any installed package, declared or not.
+       * These are the changed packages and every package depending on one; a workspace package whose code imports
+       * one of them is affected too.
+       */
+      hoisted?: string[];
     }
   | { kind: 'all'; reason: string };
 

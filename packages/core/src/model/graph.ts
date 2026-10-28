@@ -54,6 +54,8 @@ export interface FileNode extends BaseNode {
   isTest: boolean;
   /** Top-level statements beyond declarations and imports. */
   hasSideEffects: boolean;
+  /** Third-party packages this file loads at runtime (bare names, sorted; type-only imports excluded). */
+  externals?: string[];
 }
 
 export interface SymbolNode extends BaseNode {

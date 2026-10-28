@@ -33,7 +33,7 @@ import {
 import { GitService } from '@depwave/git';
 import { ASTParser } from '@depwave/parser';
 import { ModuleResolver, RESOLVER_VERSION } from '@depwave/resolver';
-import { PnpmLockfileAnalyzer, SourceInventory, WorkspaceDiscovery } from '@depwave/workspace';
+import { LockfileAnalyzer, SourceInventory, WorkspaceDiscovery } from '@depwave/workspace';
 import { VERSION } from './version.js';
 
 export interface PipelineDeps {
@@ -266,10 +266,12 @@ export async function createPipeline(cwd: string, options: PipelineOptions = {})
   const parser = new ASTParser();
   return new AnalysisPipeline({
     git,
-    inventory: new SourceInventory(git, new WorkspaceDiscovery(git)),
+    // Only files the parser can read are source. Anything else (a .py helper in a JS repo) is data: a change to it
+    // selects its package's tests instead of crashing the run (Playwright: "No language adapter for …py").
+    inventory: new SourceInventory(git, new WorkspaceDiscovery(git), (path) => parser.supports(path)),
     parser,
     createResolver: (rev, inventory) => ModuleResolver.load(git, rev, inventory.workspace, inventory.paths),
-    lockfiles: new PnpmLockfileAnalyzer(),
+    lockfiles: new LockfileAnalyzer(),
     ...(options.cache === false ? {} : { cache: new CacheManager(cachePath(await git.root())) }),
     analysisVersion: `${ANALYSIS_VERSION}|parser@${parser.version}`,
     ...(options.granularity ? { granularity: options.granularity } : {}),

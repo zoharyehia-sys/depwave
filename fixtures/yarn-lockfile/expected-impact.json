@@ -1,0 +1,88 @@
+{
+  "$schema": "../expected-impact.schema.json",
+  "description": "The pnpm-lockfile workspace on yarn berry (Plug'n'Play), with real yarn-generated lockfiles (pinned with yarn set resolution, so they stay consistent with the manifests).",
+  "policy": "conservative",
+  "scenarios": [
+    {
+      "name": "direct-dependency-bump",
+      "description": "clsx 2.1.0 → 2.1.1 (lockfile only): ui and its dependent app run.",
+      "changes": [
+        {
+          "op": "replace",
+          "path": "yarn.lock",
+          "with": "variants/clsx-bump.yarn.lock"
+        }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "packages/app/src/page.test.ts",
+            "packages/ui/src/badge.test.ts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "lock-maintenance",
+      "description": "debug 4.3.4 → 4.3.7 and ms 2.1.2 → 2.1.3 (lockfile only): utils (ms), logger (debug → ms) and utils' dependents run; docs-site does not.",
+      "changes": [
+        {
+          "op": "replace",
+          "path": "yarn.lock",
+          "with": "variants/maintenance.yarn.lock"
+        }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "packages/app/src/page.test.ts",
+            "packages/logger/src/log.test.ts",
+            "packages/ui/src/badge.test.ts",
+            "packages/utils/src/duration.test.ts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "root-dependency-bump",
+      "description": "typescript is a root devDependency, visible to every package: everything runs.",
+      "changes": [
+        {
+          "op": "replace",
+          "path": "yarn.lock",
+          "with": "variants/root-typescript.yarn.lock"
+        }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "packages/app/src/page.test.ts",
+            "packages/docs-site/src/pad.test.ts",
+            "packages/logger/src/log.test.ts",
+            "packages/ui/src/badge.test.ts",
+            "packages/utils/src/duration.test.ts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "integrity-only-change",
+      "description": "Same version, different tarball: only the package that uses it runs.",
+      "changes": [
+        {
+          "op": "modify",
+          "path": "yarn.lock",
+          "find": "10c0/3fb59c76e281a2f5c810ad71dbbb8eba8b10c6cf94733dc7f27b8c516a5376cacea53543e76f6ae477d866c8954b27f1e15ca349424c2542474eb5bb1d2b6955",
+          "replace": "10c0/3fb59c76e281a2f5c810ad71dbbb8eba8b10c6cf94733dc7f27b8c516a5376cacea53543e76f6ae477d866c8954b27f1e15ca349424c2542474eb5bb1d2b0000"
+        }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "packages/docs-site/src/pad.test.ts"
+          ]
+        }
+      }
+    }
+  ]
+}

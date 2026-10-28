@@ -1,0 +1,9 @@
+{
+  "name": "@lock/utils",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "ms": "^2.1.2"
+  }
+}

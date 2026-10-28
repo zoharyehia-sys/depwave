@@ -29,7 +29,10 @@ importer's resolved dependency graph, so a change can be pinned to the importers
 exact for packages installed in isolation. Precision may only remove provably unaffected tests, so everything that breaks
 that isolation selects every test: the root importer (its `node_modules` is on every package's lookup path), public or
 full hoisting, the package manager itself (the env document), lockfile settings/overrides/patches, and any lockfile
-depwave can't parse. npm, yarn and bun lockfiles still select everything.
+depwave can't parse. npm and yarn berry lockfiles use the same rules (a shared lock graph). Hoisted layouts (npm, yarn
+node-modules) break isolation by design: code can import undeclared packages. So the graph records each file's
+third-party imports, and a package importing a changed package, or anything depending on one, is selected as well.
+Yarn classic and bun lockfiles still select everything.
 
 ## Consequences
 - ✅ Enforced selection can be trusted, backed by shadow-mode recall metrics in CI.
