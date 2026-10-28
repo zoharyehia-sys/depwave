@@ -36,9 +36,9 @@ to what changed, and `depwave why` prints that chain.
 
 ## See it work
 
-Real output from a six-test pnpm monorepo, similar to the checked-in [`pnpm-basic`](fixtures/pnpm-basic) fixture.
-`@acme/app` uses `@acme/ui`, which uses `@acme/utils`, and every import goes through a package's `src/index.ts`
-barrel. The branch changes one function:
+Real output from a six-test pnpm monorepo that [`scripts/demo/make-demo.mjs`](scripts/demo/make-demo.mjs) generates,
+similar to the checked-in [`pnpm-basic`](fixtures/pnpm-basic) fixture. `@acme/app` uses `@acme/ui`, which uses
+`@acme/utils`, and every import goes through a package's `src/index.ts` barrel. The branch changes one function:
 
 ```diff
  // packages/utils/src/money.ts
@@ -50,7 +50,7 @@ barrel. The branch changes one function:
 
 ```console
 $ depwave impact --base main
-depwave impact 0dcc45981cef...97c426261336 (symbol level)
+depwave impact 5f2bcea9454b...d3be4df2fe01 (symbol level)
   changed files:  1
   impacted nodes: 15
   impacted tests: 3
@@ -68,7 +68,7 @@ they run reaches `formatCurrency`. Ask depwave about either kind:
 
 ```console
 $ depwave why packages/app/src/checkout.test.ts --base main
-✔ packages/app/src/checkout.test.ts is impacted (symbol level, 0dcc45981cef...97c426261336)
+✔ packages/app/src/checkout.test.ts is impacted (symbol level, 5f2bcea9454b...d3be4df2fe01)
 
     packages/app/src/checkout.test.ts
       → runs its top-level code                 packages/app/src/checkout.test.ts
@@ -79,7 +79,7 @@ $ depwave why packages/app/src/checkout.test.ts --base main
   This is the shortest path; others may exist.
 
 $ depwave why packages/app/src/profile.test.ts --base main
-✘ packages/app/src/profile.test.ts is not impacted (symbol level, 0dcc45981cef...97c426261336).
+✘ packages/app/src/profile.test.ts is not impacted (symbol level, 5f2bcea9454b...d3be4df2fe01).
   Nothing it depends on is among the 1 changed file(s).
 ```
 
@@ -90,6 +90,18 @@ The same diff under three strategies:
 | Package-level: all three packages depend on `@acme/utils` | 6 of 6 |
 | `depwave impact --granularity file` (file-level import graph) | 5 of 6 |
 | `depwave impact` (symbol level, the default) | **3 of 6** |
+
+**Try it.** From a [built](#quick-start) depwave clone, generate the demo next to it, with the `round-prices` branch
+checked out, and run any command above inside it:
+
+```bash
+node scripts/demo/make-demo.mjs ../acme-demo
+cd ../acme-demo
+depwave impact --base main
+```
+
+Its commit dates are pinned, so you get the same SHAs as shown here. It also writes `results.json`, the full test run
+that the [shadow mode](#shadow-mode) example reads.
 
 ## Quick start
 
@@ -293,7 +305,7 @@ depwave shadow --base origin/main --results test-results.json
 
 ```console
 $ depwave shadow --base main --results results.json
-depwave shadow 0dcc45981cef...97c426261336: 1 failing test file NOT selected ✘
+depwave shadow 5f2bcea9454b...d3be4df2fe01: 1 failing test file NOT selected ✘
   a selective run would have run 3 of 6 test files (50% skipped)
   missed: packages/app/src/profile.test.ts
   Each one is either a flaky test or a dependency depwave did not see. Run `depwave why <test>` to check, and please report the second kind.
@@ -359,17 +371,26 @@ Node.js 22.14 on Windows 11. Shallow clones at these commits: tRPC
 [`1b9b602`](https://github.com/microsoft/playwright/commit/1b9b602724484df3ebc41aba77824fdfaba861f6) (last 120
 commits). A lockfile commit whose parent falls outside the clone is left out.
 
-**Reproduce it** in a clone of the target repository:
+**Reproduce it.** From a [built](#quick-start) depwave clone, [`scripts/bench/run.mjs`](scripts/bench/run.mjs) fetches
+each repository at the commit above and prints this table. It needs network access to GitHub, and reuses the clones on
+later runs:
 
 ```bash
-for sha in $(git log --format=%h -- pnpm-lock.yaml); do
-  git cat-file -e "$sha~1" 2>/dev/null || continue # parent outside a shallow clone
-  depwave impact --base "$sha~1" --head "$sha" --format json > "impact-$sha.json"
-done
+node scripts/bench/run.mjs ../depwave-bench              # all four
+node scripts/bench/run.mjs ../depwave-bench trpc vite    # or some of them
 ```
 
-Each file holds `plan.totalTests` (the baseline) and `plan.groups[].tests` (the selection). When `plan.runAll` is
-`true`, every test is selected.
+depwave reads git objects only, so the clones are never checked out (Vite's paths are too long to check out on
+Windows). For any other repository, run
+[`scripts/bench/lockfile-replay.mjs`](scripts/bench/lockfile-replay.mjs) on a clone of it:
+
+```bash
+node scripts/bench/lockfile-replay.mjs /path/to/repo pnpm-lock.yaml
+```
+
+It runs `depwave impact <sha>~1..<sha> --format json` for each commit that touched the lockfile and prints one line per
+commit (`✔` narrowed, `■` ran everything), then a `SUMMARY` line with the totals. The baseline is `plan.totalTests`,
+the selection is `plan.groups[].tests`, and when `plan.runAll` is `true` every test is selected.
 
 ## CLI reference
 
