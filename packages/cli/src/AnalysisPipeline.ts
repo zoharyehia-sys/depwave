@@ -148,6 +148,14 @@ export class AnalysisPipeline {
     };
   }
 
+  /** The graph of one revision (a commit, or WORKTREE), from the snapshot cache when possible. */
+  async graphAt(rev: Revision): Promise<{ rev: string; graph: DependencyGraph; unresolved: UnresolvedImport[] }> {
+    this.stats = { snapshotHits: 0, factsFromCache: 0, filesParsed: 0 };
+    const resolved = await this.deps.git.resolveRevision(rev);
+    const { graph, unresolved } = await this.snapshot(resolved);
+    return { rev: resolved, graph, unresolved };
+  }
+
   /** Both sides of every changed lockfile the adapter understands, plus the config that decides hoisting, at head. */
   private async lockfileDiffs(changes: readonly FileChange[], base: Revision, head: Revision): Promise<Map<string, LockfileDiff>> {
     const port = this.deps.lockfiles;

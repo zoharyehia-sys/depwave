@@ -498,7 +498,7 @@ function predict(g: CsrGraph, seeds: number[], policy: ImpactPolicy): ImpactRepo
 ```
 
 - **Complexity:** O(V′ + E′), only the reachable subgraph. Typed arrays mean zero allocation per node.
-- **Cycles:** handled by the visited check. **Tarjan's SCC** runs once at build time to condense cycles for reporting ("these 14 files form a cycle") and for a `depwave cycles` lint command.
+- **Cycles:** handled by the visited check. `depwave cycles` reports them separately: Tarjan's SCC over runtime file imports (iterative, O(files + edges)), each shown as its shortest loop ("these 43 files form a cycle"). It runs on demand from the file-level snapshot, not at build time.
 - **Granularity fallback:** traversal walks symbol edges. If a file has an `IMPORTS` edge but no resolvable `IMPORTS_SYMBOL` (namespace import `import * as x`, CommonJS `require`), the dependency is treated as depending on **every** exported symbol of the target. Conservative but sound.
 - **Barrel explosion fix:** because `ReExportResolver` binds imports to *defining* symbols, changing `Button` in `ui/src/Button.tsx` does **not** impact everything that imports *anything* from `ui/src/index.ts`. This is the single biggest precision win over file-level tools like `nx affected` and `turbo --filter`.
 - **Test selection:** a test is impacted if its node or any symbol/file it reaches via forward edges is in the impact set. Equivalently, and that's what we do, the reverse BFS reaches the test file node.
@@ -542,7 +542,7 @@ checkout.test.ts
 - ✅ `--granularity symbol|file`. Golden suite runs every scenario at both levels; mutation-checked.
 - L2 resolution cache with **probe tracking**, `applyDelta`, export-surface early cutoff.
 - ✅ L3 commit snapshots (keyed by granularity too).
-- ✅ `depwave why <file>`: shortest path with labelled relations, trigger attribution, heuristic hops marked. ⏳ `depwave cycles`.
+- ✅ `depwave why <file>`: shortest path with labelled relations, trigger attribution, heuristic hops marked. ✅ `depwave cycles [--rev] [--include-type-only]`: import cycles as SCCs with a shortest loop each, exit 4 when any exist. Golden: every fixture's `cycles` list.
 - **fast-check suite: incremental ≡ full rebuild.**
 - ✅ **Exit:** warm incremental run < 2 s on 10k files. Measurable reduction in selected tests vs file-level on `barrel-hell`.
 
