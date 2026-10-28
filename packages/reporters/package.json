@@ -2,6 +2,7 @@
   "name": "@depwave/reporters",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "description": "Renders impact reports (text, json, markdown, sarif, mermaid).",
   "type": "module",
   "exports": {

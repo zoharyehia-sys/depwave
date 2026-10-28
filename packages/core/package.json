@@ -2,6 +2,7 @@
   "name": "@depwave/core",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "description": "Pure domain model, ports and algorithms. No I/O.",
   "type": "module",
   "exports": {

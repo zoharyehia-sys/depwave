@@ -1,241 +1,316 @@
 # depwave
 
-**AST-driven monorepo dependency & impact analyzer.** Given a git diff, depwave tells you which symbols, packages and tests are affected, and *why*.
+**Run the tests your change can actually reach, and see why each one was selected.**
 
-> 🚧 **Status: Phase 2 (symbol-level precision).** `depwave impact` follows changes symbol by symbol, binding imports
-> through barrels to the defining symbol and ignoring comment/whitespace-only edits, with a persistent cache. Verified on
-> every fixture scenario at both levels and on this repo itself. `depwave why` explains any selection.
+depwave is a test-impact analyzer for JavaScript and TypeScript monorepos. It reads a git diff, builds a symbol-level
+dependency graph of both revisions, and selects the test files that can observe the change: through imports and barrel
+files, across workspace packages, and through lockfile updates. When it can't prove that a test is unaffected, it
+selects the test.
 
-## Usage
+[![CI](https://github.com/zoharyehia-sys/depwave/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/zoharyehia-sys/depwave/actions/workflows/ci.yml)
+![Node.js 22+](https://img.shields.io/badge/node-%E2%89%A5%2022-339933?logo=node.js&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+[Quick start](#quick-start) · [Why depwave](#why-depwave) · [How it works](#how-it-works) ·
+[Safety](#correctness-and-safety) · [Results](#results-on-real-repositories) · [CI](#github-actions) ·
+[Docs](#documentation)
+
+## Quick start
+
+You need Node.js 22 or later, `git`, and a clone whose history contains the merge base of the revisions you compare.
+depwave isn't published to npm yet, so you build it from source.
+
+**1. Install**
+
+```bash
+git clone https://github.com/zoharyehia-sys/depwave.git
+cd depwave
+corepack enable          # provides the pinned pnpm 9
+pnpm install --frozen-lockfile
+pnpm build
+alias depwave="node '$PWD/packages/cli/dist/bin.js'"
+```
+
+**2. Analyze a diff.** From the root of any git repository:
 
 ```bash
 depwave impact --base origin/main
 ```
 
-```bash
-depwave impact --base main --head WORKTREE --format json
+Here it is on a six-test demo monorepo where one shared function changed. You can create the same repository with
+`node scripts/demo/make-demo.mjs`.
+
+```console
+$ depwave impact --base main
+depwave impact 2f61664a3bd4...d0d3fed2d141 (symbol level)
+  changed files:  1
+  impacted nodes: 15
+  impacted tests: 3
+
+@acme/app (vitest): 1 test file(s)
+  packages/app/src/checkout.test.ts
+@acme/ui (vitest): 1 test file(s)
+  packages/ui/src/PriceTag.test.ts
+@acme/utils (vitest): 1 test file(s)
+  packages/utils/src/money.test.ts
 ```
 
-- `--base` is compared via its **merge base** with `--head`, so commits that landed on main after you branched don't count.
-- `--head WORKTREE` includes uncommitted and untracked changes.
-- `--granularity symbol` (default) follows individual functions, classes and variables; `--granularity file` is the
-  coarser Phase 1 analysis. Symbol level never selects a test that file level wouldn't. See [ADR 0006](docs/adr/0006-symbol-level-model.md).
-- `--cwd <dir>` analyzes another repository. `--no-cache` bypasses the cache.
-- Exit codes: `0` ok, `1` analysis failed (one-line message on stderr), `2` not implemented.
+**3. Ask why** a test was selected, or wasn't:
 
-## What selects which tests
+```console
+$ depwave why packages/app/src/checkout.test.ts --base main
+✔ packages/app/src/checkout.test.ts is impacted (symbol level, 2f61664a3bd4...d0d3fed2d141)
 
-Code changes follow the import graph (symbol by symbol). Changes no import can express follow these rules, all
-conservative: when depwave can't see a dependency, it runs more tests, never fewer.
+    packages/app/src/checkout.test.ts
+      → runs its top-level code                 packages/app/src/checkout.test.ts
+      → which calls renderCheckout              packages/app/src/checkout.ts:3
+      → which calls PriceTag                    packages/ui/src/PriceTag.ts:3
+      → which calls formatCurrency  ◀ changed   packages/utils/src/money.ts:1
+
+  This is the shortest path; others may exist.
+
+$ depwave why packages/app/src/profile.test.ts --base main
+✘ packages/app/src/profile.test.ts is not impacted (symbol level, 2f61664a3bd4...d0d3fed2d141).
+  Nothing it depends on is among the 1 changed file(s).
+```
+
+Add `--head WORKTREE` to include uncommitted and untracked changes. depwave writes nothing to your repository except
+its cache in `.depwave/`, which contains its own `.gitignore`.
+
+**Next:** run it in [CI](#github-actions), and check it against your full test runs with
+[shadow mode](#shadow-mode) before you skip anything. Every command and option is in the
+[CLI reference](docs/cli.md).
+
+## Why depwave
+
+Monorepo CI usually runs every test on every pull request, because working out what a change can break is hard. The
+usual shortcuts give up either safety or precision. In the demo above, the change was one function in
+`@acme/utils`, which the other two packages depend on:
+
+| Approach | What runs | Demo |
+|---|---|---|
+| Run everything | Every test in the repository | 6 of 6 |
+| Package-level "affected" (`nx affected`, `turbo run test --filter=...[origin/main]`) | Every test in the changed package and in every package that depends on it | 6 of 6 |
+| File-level import graph (`depwave impact --granularity file`) | Tests that import the changed file, directly or through other files | 5 of 6 |
+| **depwave** (symbol level, the default) | Tests that reach the changed **function**, through any number of files, barrels and packages | **3 of 6** |
+| Match file names | `money.test.ts` | 1 of 6, missing two tests that can fail |
+
+The other three demo tests import the same package barrels, but nothing they run reaches `formatCurrency`.
+
+## How it works
+
+```mermaid
+flowchart LR
+  A["git diff<br/>merge base → head"] --> B["Read both revisions<br/>from git objects"]
+  B --> C["Parse TS/JS<br/>Tree-sitter"]
+  C --> D["Symbol graph<br/>imports, calls, re-exports"]
+  B --> E["Lockfile diff<br/>pnpm, npm, Yarn"]
+  B --> F["File rules<br/>configs, data, CI"]
+  D --> G["Reverse walk<br/>from what changed"]
+  E --> G
+  F --> G
+  G --> H["Selected tests<br/>and why-paths"]
+```
+
+1. **Read** both revisions straight from git objects, from the merge base of `--base` and `--head`. Nothing is checked
+   out.
+2. **Discover packages** from `pnpm-workspace.yaml`, the `workspaces` field of `package.json` (npm and Yarn), or Nx
+   `project.json` files. A repository without workspaces counts as a single package.
+3. **Parse and resolve** every `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs` and `.cjs` file with Tree-sitter and
+   depwave's own resolver. That covers relative paths, tsconfig `paths` and `baseUrl`, `#imports`, and workspace
+   packages. Imports are bound through barrel files to the symbol that defines them.
+4. **Seed** from what changed. A symbol counts as changed when its body hash or export status differs, so comment-only
+   and whitespace-only edits change nothing. Files that no import expresses, such as configs, data files, CI
+   definitions and lockfiles, go through [rules](#changes-no-import-can-express).
+5. **Walk** backwards over the union of both graphs, so deleted code still reaches its old dependents. Every test file
+   reached is selected (`*.test.*` and `*.spec.*` with a JS or TS extension, and every file under `__tests__/`). The
+   shortest path to each one is kept for `depwave why`.
+
+**Two kinds of dependencies.** *Source dependencies* are what your code imports, and they form the graph. *Package
+dependencies* are what your workspace packages resolve to in the lockfile. depwave doesn't analyze third-party code.
+It diffs the lockfile (pnpm, npm or Yarn Berry), works out which packages' resolved dependency trees changed, and
+selects their tests. With npm's hoisted layout, it also selects packages that import a changed dependency without
+declaring it. Details: [lockfile changes](docs/lockfiles.md).
+
+## Correctness and safety
+
+A missed failing test costs far more than an extra passing one: it lets a regression through and destroys trust in the
+tool. So depwave is built to over-select. Precision features may only remove tests that are provably unaffected, and
+anything depwave can't see widens the selection ([ADR 0004](docs/adr/0004-soundness-over-precision.md)). Every
+scenario in [`fixtures/`](fixtures) runs end to end at both granularities, and the expected results require the
+symbol level to select a subset of what the file level selects.
+
+### Widened on purpose
+
+| Situation | What depwave assumes |
+|---|---|
+| `import(expr)` with a non-literal argument | The importer may load any file in its package |
+| `import.meta.glob('./x/*.ts')`, `require.context(…)`, `` import(`./x/${name}.ts`) `` | Every file the pattern matches |
+| Namespace imports (`import * as x`), CommonJS `require` | A dependency on every export of the target |
+| Type-only imports | Followed: a changed type can break a test's compile step |
+| Using a class | A dependency on every member of the class. Per-member tracking was [measured and rejected](docs/adr/0006-symbol-level-model.md): method calls through interface-typed values can't be bound without type information |
+| A test that spawns processes (`child_process`, `execa`, …) | It may run any file in its package |
+| A source file depwave fails to extract | It may depend on anything in its package |
+
+`depwave why` marks the steps it can't prove statically (glob and `import(expr)` edges) with `~`.
+
+### Changes no import can express
 
 | Change | Selects |
 |---|---|
-| `pnpm-lock.yaml`, `package-lock.json` / `npm-shrinkwrap.json`, yarn berry `yarn.lock` | the packages whose resolved dependencies changed, and their dependents ([details](#lockfile-changes)) |
-| Yarn classic (v1) and bun lockfiles, root `package.json`, workspace config, `depwave.config.json` | every test |
-| CI definitions (`.github/workflows/`, `.gitlab-ci.yml`, …) and toolchain pins (`.nvmrc`, `.node-version`, `.tool-versions`, `.bun-version`, `.npmrc`) | every test: they change the environment tests run in |
-| A `tsconfig*.json` / test-runner / Babel config | everything under its directory |
-| A workspace package's `package.json` | that package and every package that depends on it |
-| A file no code imports (JSON/text fixtures, templates, images, a lockfile outside a package root) | the tests of its package, plus every test that imports one of its test helpers (e.g. `test/support/loadFixtures.ts`): they may read it at runtime |
-| `__snapshots__/x.test.ts.snap` | exactly `x.test.ts` |
-| Docs and editor/lint config (`*.md`, LICENSE, `.vscode/`, …) outside test-data dirs | nothing |
-| `import(expr)`, a test that spawns processes (`child_process`, `execa`, …), a file depwave can't parse | "may load anything in its package" |
-| `import.meta.glob('./x/*.ts')`, `require.context(…)`, `` import(`./x/${n}.ts`) `` | every matching file |
+| A lockfile (pnpm, npm, Yarn Berry) | The packages whose resolved dependencies changed, and their dependents. Every test when the change reaches the root or isn't confined to packages ([details](docs/lockfiles.md#when-every-test-is-selected)) |
+| Yarn classic and Bun lockfiles, the root `package.json`, workspace config (`pnpm-workspace.yaml`, `nx.json`, `turbo.json`, `lerna.json`), `depwave.config.json` | Every test |
+| CI definitions (`.github/workflows/`, `.gitlab-ci.yml`, …) and toolchain files (`.nvmrc`, `.node-version`, `.tool-versions`, `.npmrc`, `.yarnrc.yml`, …) | Every test: they change the environment tests run in |
+| `tsconfig*.json`, `jsconfig*.json`, Vite/Vitest/Jest config, Babel config | Everything under its directory |
+| A workspace package's `package.json` | That package and every package that depends on it |
+| A file no code imports (JSON fixtures, templates, images) | The tests of its package, plus every test that imports one of that package's test helpers |
+| `__snapshots__/x.test.ts.snap` | Exactly `x.test.ts` |
+| Docs and editor config (`*.md`, `LICENSE`, `.vscode/`, …) outside test-data directories | Nothing |
 
-### Lockfile changes
+### What depwave can't see
 
-Dependency bumps (Renovate, Dependabot) usually touch a lockfile and one manifest. depwave diffs the lockfile (pnpm v6/v9,
-npm v2/v3, yarn berry) and selects only the workspace packages whose **resolved dependency closure** changed, even when the change is deep in the
-tree (`debug` moving to a new `ms` selects whoever uses `debug`), plus the packages that depend on them.
+These can cause a missed test. Know them before you skip tests based on depwave's output:
 
-```text
-trigger:        pnpm-lock.yaml (lockfile, 2 packages: effect 3.21.0 → 3.22.2)
-```
+- **Unresolved imports.** An import depwave can't resolve adds no edge, and it doesn't widen the selection. It is
+  reported: `⚠ unresolved imports: N` in text output, and `report.unresolved` in JSON. Treat a non-empty list as a
+  reason not to trust that run's selection. This repository's CI fails its self-check when the list isn't empty.
+- **Runtime wiring.** Dependency-injection containers, string-based plugin loading, reflection, and framework
+  conventions such as file-system routing. Apart from the `*eslint*` and `*prettier*` lockfile rule, depwave doesn't
+  detect a package loaded by name.
+- **Files read across packages.** A test that reads another package's files by path, without importing anything from
+  that package.
+- **Other languages.** Only TypeScript and JavaScript are parsed. Other files are treated as data files.
+- **Test naming.** A test file outside `__tests__/` that isn't named `*.test.*` or `*.spec.*` (JS or TS) is never
+  selected. [Shadow mode](#shadow-mode) lists such files as unrecognized.
 
-It falls back to **every test**, and says why, whenever a change isn't confined to packages:
+### Shadow mode
 
-- the root importer changed: root `node_modules` is visible to every package;
-- pnpm itself changed (the env document of pnpm 11+ lockfiles), or `settings`, `overrides` or `patchedDependencies` did;
-- a changed package is hoisted to the root (`*eslint*`, `*prettier*`, your `public-hoist-pattern`), or
-  `shamefully-hoist` / `node-linker=hoisted` is set;
-- the lockfile is new or deleted, unparseable, or in a format depwave doesn't read (yarn classic, bun).
-
-**Hoisted layouts** (npm, yarn with `nodeLinker: node-modules` or `pnpMode: loose`) put every dependency in the root
-`node_modules`, so code can import packages its manifest never declared, and it works. depwave records each file's
-third-party imports, so a package whose code imports a changed package (or anything depending on one) is selected too,
-declared or not. pnpm and Yarn Plug'n'Play refuse undeclared imports, so they don't need this.
-
-Replaying every lockfile commit in real repositories (previously 0% everywhere):
-
-| Repo | Lockfile | Test-file runs skipped | Why not more |
-|---|---|---|---|
-| tRPC | pnpm | **62%** | |
-| Vite | pnpm | **32%** | pnpm bumps, root dependencies, `overrides` |
-| Jest | yarn berry (hoisted) | **10%** | most lock-maintenance runs touch a hoisted `*eslint*` package |
-| Playwright | npm | 0% | its tooling lives in the root `package.json`, so nearly every bump reaches the root |
-
-Every full run had a legitimate reason, and the trigger names it.
-
-## Explain a result: `depwave why`
+Running only the selected tests is a bet that depwave saw every dependency. Shadow mode checks that bet on your real
+CI: **keep running every test**, and let depwave compare each failure with what it would have selected.
 
 ```bash
-depwave why packages/app/src/checkout.test.ts --base origin/main
+npx vitest run --reporter=default --reporter=json --outputFile.json=test-results.json
+depwave shadow --base origin/main --results test-results.json
 ```
 
-```text
-✔ packages/app/src/checkout.test.ts is impacted (symbol level, 909ad48fccd9...ad5322fd2231)
+On the demo repository, where `make-demo.mjs` also writes the results of a full run in which `profile.test.ts`
+failed:
 
-    packages/app/src/checkout.test.ts
-      → runs its top-level code                  packages/app/src/checkout.test.ts
-      → which calls renderCheckout               packages/app/src/checkout.ts:3
-      → which calls PriceTag                     packages/ui/src/PriceTag.ts:3
-      → which calls formatCurrency  ◀ changed    packages/utils/src/money.ts:1
+```console
+$ depwave shadow --base main --results results.json
+depwave shadow 2f61664a3bd4...d0d3fed2d141: 1 failing test file NOT selected ✘
+  a selective run would have run 3 of 6 test files (50% skipped)
+  missed: packages/app/src/profile.test.ts
+  Each one is either a flaky test or a dependency depwave did not see. Run `depwave why <test>` to check, and please report the second kind.
 ```
 
-- Shows the **shortest** chain from a change to the file, naming each relation (calls, uses, uses the type, re-exports, imports dynamically).
-- A selection caused by a config change says so: `◀ selected because packages/utils/package.json changed`, never a made-up code path.
-- Steps depwave can't prove statically (template globs, `import(expr)`) are marked `~`.
-- Not impacted → says so; unknown path → exit code 1. Paths may be repo-relative or relative to where you are. `--format json` for tooling.
+| Verdict | What it means | Exit code |
+|---|---|---|
+| `sound` | **No miss was observed in this run.** Every test file that failed was one depwave selected, or nothing failed | 0 |
+| `missed` | A test file that failed was **not** selected: a flaky test, or a dependency depwave didn't see | **3** |
+| `inconclusive` | No miss was observed, but some failures can't be traced to a file (JUnit without file paths) | 0 |
 
-## GitHub Action: impact comment on every PR
+> [!IMPORTANT]
+> **`sound` is an observation about one run, not a proof.** It says that no failing test fell outside the selection
+> this time. It can't say that every test depwave skipped was unaffected: a skipped test that passed would have passed
+> either way, so it carries no evidence. When nothing fails, `sound` tells you nothing about depwave's accuracy, only
+> how much a selective run would have saved. Confidence comes from many runs where tests actually failed and were all
+> selected.
+
+- It reads Vitest and Jest JSON (`--reporter=json`, `jest --json`) and JUnit XML. Repeat `--results` for several
+  runners.
+- This repository runs shadow mode on every CI build and uploads `depwave-shadow.json` as a record. Its first run found
+  a real miss: a test importing `post-comment.mjs` was linked to the `.d.mts` type stub next to it, instead of the
+  JavaScript that runs. The resolver now follows a declaration file to its runtime sibling.
+
+### Rolling it out
+
+1. **Observe.** Add depwave to your existing full test job with
+   [`test-results`](docs/github-action.md#shadow-mode). Nothing about what runs changes.
+2. **Investigate every `missed`** with `depwave why`. A dependency depwave didn't see is a bug worth reporting.
+3. **Switch pull requests to selective runs** only after a stretch of builds with real failures, all of them selected.
+4. **Keep a full run** after merge to `main`, or nightly, to catch whatever a selective run skips.
+
+## Results on real repositories
+
+The lockfile analysis, replayed on every commit that touched the root lockfile in four open-source monorepos. Each
+commit was compared with its parent. The baseline runs every test file on each of those commits.
+
+| Repository | Lockfile | Commits replayed | Test-file runs (baseline) | Skipped |
+|---|---|---|---|---|
+| tRPC | pnpm | 9 | 1,871 | **1,154 (62%)** |
+| Vite | pnpm | 11 | 4,716 | **1,513 (32%)** |
+| Jest | Yarn Berry, hoisted | 24 | 29,398 | **2,941 (10%)** |
+| Playwright | npm | 7 | 4,103 | 0 (0%) |
+
+- This covers **lockfile commits only**, not the everyday code changes depwave mostly sees.
+- It counts **test files, not CI time**. Skipping 62% of test files doesn't save 62% of CI minutes: tests differ in
+  duration, and setup, install and build costs stay the same.
+- It measures **selection size, not correctness**: no test suites ran.
+
+The [benchmark report](docs/benchmarks.md) has the pinned commits, the exact commands, every replayed commit with its
+selection, and why each full run happened. `node scripts/bench/readme-benchmark.mjs` reproduces the table.
+
+## GitHub Actions
+
+This repository is also a composite action. It builds depwave, analyzes the pull request, writes the report to the job
+summary, and posts one sticky comment on the PR. If the analysis fails, this workflow runs every test:
 
 ```yaml
-# .github/workflows/depwave.yml
 on: pull_request
 permissions:
   contents: read
-  pull-requests: write
+  pull-requests: write # only for the PR comment
 jobs:
-  impact:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # depwave needs the merge base
-      - uses: zoharyehia-sys/depwave@main
+      - uses: zoharyehia-sys/depwave@ad89e7cbf88996aa4509391b5bab1b88c9535179 # main on 2026-10-28
         id: depwave
-      # Optional: run only what changed.
-      - run: npx vitest run ${{ steps.depwave.outputs.tests }}
-        if: steps.depwave.outputs.run-all != 'true'
+        continue-on-error: true # if the analysis fails, run everything below instead of nothing
+      # … set up Node.js and install your dependencies here …
+      - name: Run all tests
+        if: steps.depwave.outcome != 'success' || steps.depwave.outputs.run-all == 'true'
+        run: npx vitest run
+      - name: Run impacted tests
+        if: steps.depwave.outcome == 'success' && steps.depwave.outputs.run-all != 'true' && steps.depwave.outputs.impacted-tests != '0'
+        env:
+          TESTS: ${{ steps.depwave.outputs.tests }} # PR-controlled paths: pass them through env, never inline in run:
+        run: npx vitest run $TESTS
 ```
 
-- Posts **one sticky comment** per PR (edited in place on every push): the headline (*"3 test files impacted of 41, 93% skipped"*),
-  tests per package, global triggers, unresolved-import warnings, and `depwave why` paths for the top tests reached
-  through other code.
-- Also writes the report to the **job summary**, so fork PRs (read-only token) still show it. The comment is skipped with a warning.
-- Inputs: `base` (default `origin/<PR base>`), `granularity`, `explain` (top N why-paths, default 3), `comment`, `github-token`.
-- Outputs: `impacted-tests`, `total-tests`, `run-all`, `tests` (space-separated paths), `report` (JSON path).
-- CLI equivalent: `depwave impact --base origin/main --format markdown --explain 3`.
+There are no releases yet, so pin a full commit SHA rather than a moving branch. This exact workflow runs on every
+pull request to this repository. The [Action guide](docs/github-action.md) covers every input and output, what runs
+in each case, shadow mode in CI, and other CI systems.
 
-## Shadow mode: prove it before you trust it
+## Compatibility
 
-Running only the selected tests is a bet that depwave saw every dependency. Shadow mode checks that bet on real CI runs:
-**keep running every test**, and let depwave check each failure against what it would have selected.
-
-```bash
-vitest run --reporter=default --reporter=json --outputFile.json=test-results.json
-depwave shadow --base origin/main --results test-results.json
-```
-
-```text
-depwave shadow 0123456789ab...HEAD: 1 failing test file NOT selected ✘
-  a selective run would have run 4 of 29 test files (86% skipped)
-  missed: test/action.test.ts
-```
-
-| Verdict | Meaning | Exit |
+| Area | Supported | Not supported |
 |---|---|---|
-| `sound` | Every failing test was one depwave selected (or nothing failed) | 0 |
-| `missed` | A failing test was **not** selected: a flaky test, or a dependency depwave can't see | **3** |
-| `inconclusive` | Nothing missed, but some failures name no file (JUnit without paths) | 0 |
+| Languages | TypeScript, TSX, JavaScript, JSX (ESM and CommonJS) | Everything else, which is treated as data files |
+| Workspaces | pnpm, npm and Yarn workspaces, Nx `project.json`, single-package repositories | |
+| Lockfiles | pnpm v6 and v9, npm v2 and v3, Yarn Berry | Yarn classic, Bun, npm v1: every test is selected |
+| Test runners | Any runner that accepts file paths. Shadow mode reads Vitest/Jest JSON and JUnit XML | |
+| Runtime | Node.js 22+ with git. CI runs on Ubuntu and Windows, including a checkout path with spaces and non-ASCII characters | macOS isn't tested in CI |
+| Distribution | Source build, GitHub Action | npm package, release tags |
 
-- Reads **Vitest/Jest JSON** (`--reporter=json`, `jest --json`) and **JUnit XML**; repeat `--results` for several runners.
-  Relative paths are taken from the repo root (`--results-root` to change). The format is sniffed from the content.
-- The output also tells you what a selective run would have saved, and which result files depwave doesn't see as
-  tests (it can never select those).
-- **GitHub Action:** pass `test-results: test-results.json` and run the action *after* your tests with
-  `if: ${{ !cancelled() }}`. The verdict is appended to the PR comment, exposed as `shadow-verdict` / `shadow-missed`, and
-  the job fails on a miss.
-- This repo runs shadow mode on every CI build (`depwave-shadow.json` is uploaded as the track record). It has
-  already paid off: its first run found that a test importing `post-comment.mjs` was linked to the `.d.mts` type stub
-  next to it rather than to the code that runs. Now fixed: impact follows the runtime file.
+Planned but not built yet: dependency-graph export, cycle detection, type-aware method binding, and plugins for
+framework conventions. See the [roadmap](ARCHITECTURE.md#5-implementation-roadmap).
 
-**When to switch to selective runs:** after a few weeks of `sound` on your own repo. Keep a nightly full run anyway.
+## Documentation
 
-## Configuration: `depwave.config.json`
-
-Optional, at the repository root. Read **from git at each analyzed revision**, like every other input, so the base and
-head of a diff can each have their own config.
-
-| Key | Type | Default | Meaning |
-|---|---|---|---|
-| `ignore` | `string[]` (globs, repo-relative) | `[]` | Paths that aren't part of the code under analysis: fixtures, examples, vendored copies, generated code. Ignored paths define no packages, have no files in the graph, and never match dynamic-import globs. |
-
-```json
-{ "ignore": ["fixtures/**", "**/*.generated.ts"] }
-```
-
-- Unknown keys are ignored. A malformed file fails the run with `depwave: depwave.config.json: …`.
-- Changing this file is a **global trigger**: every test is selected, since it changes what's analyzed.
-
-## Cache
-
-`depwave impact` keeps a cache in `.depwave/cache.db` at the repository root (SQLite, WAL mode). The directory contains a
-`.gitignore` of `*`, so it never shows up in `git status` or in a `WORKTREE` analysis.
-
-| Layer | Key | Holds |
-|---|---|---|
-| L1 facts | content hash + language + parser version | Parsed facts per file content: unchanged files are never re-parsed |
-| L3 snapshots | commit SHA + analysis version | The whole graph of a commit: a warm merge base skips git listing, parsing and resolution |
-
-Both keys are immutable inputs, so cached entries can't go stale; upgrading depwave changes the analysis version and
-misses old entries. Uncommitted work (`WORKTREE`) is never snapshotted but still reuses L1 per file. On this repo a warm
-run takes ~0.5 s vs ~1.1 s cold, and most of the warm time is Node startup.
-
-The cache never changes an answer: if it fails (corrupt file, full disk, missing native binary), the run continues
-uncached with a warning. Maintenance:
-
-```bash
-depwave cache stats
-```
-
-```bash
-depwave cache clear
-```
-
-> **L2 (resolutions) is implemented but not used.** Resolution runs over an in-memory view of the revision at ~4 µs per
-> import, which is faster than an SQLite hit (~6 µs). It's kept for a future disk-backed resolver. See ARCHITECTURE §4.1.
-
-- 📐 Design: [ARCHITECTURE.md](ARCHITECTURE.md)
-- 🧾 Decisions: [docs/adr](docs/adr)
-- 🧪 Spec-by-example: [fixtures](fixtures)
-
-## Packages
-
-| Package | Role |
+| Page | What's in it |
 |---|---|
-| `@depwave/core` | Pure domain: model, **ports**, algorithms. No I/O, no npm deps. |
-| `@depwave/parser` | Tree-sitter → `FileFacts` |
-| `@depwave/resolver` | Module resolution with probe tracking |
-| `@depwave/cache` | SQLite facts / resolution / snapshot cache |
-| `@depwave/git` | `GitPort` over the git CLI |
-| `@depwave/workspace` | Workspace discovery + source inventory |
-| `@depwave/reporters` | text / json (+ markdown, sarif, mermaid later) |
-| `@depwave/cli` | Clipanion commands + composition root |
+| [CLI reference](docs/cli.md) | Every command, option and exit code, JSON output, configuration, the cache |
+| [GitHub Action](docs/github-action.md) | The full workflow, inputs and outputs, failure handling, shadow mode in CI |
+| [Lockfile changes](docs/lockfiles.md) | Supported formats, how a change is narrowed, hoisting, when every test runs |
+| [Benchmark report](docs/benchmarks.md) | Method, pinned commits, per-commit results, how to reproduce |
+| [Architecture](ARCHITECTURE.md) and [ADRs](docs/adr) | The data model, algorithms and caching design, and the decisions behind them |
+| [Contributing](CONTRIBUTING.md) | Development setup, project layout, what a change to selection rules needs |
 
-Layering is enforced by `dependency-cruiser`: **core → nothing**, **adapters → core only**, **cli → anything**.
+## License
 
-## Develop
-
-Requires Node ≥ 22 and pnpm 9 (`corepack enable` picks the pinned version).
-
-```bash
-pnpm install
-```
-
-```bash
-pnpm check
-```
-
-`check` runs typecheck → dependency rules → tests → build. Individually: `pnpm typecheck`, `pnpm lint:deps`, `pnpm test`, `pnpm build`.
-
-Tests run against sources (Vitest aliases `@depwave/*` to `packages/*/src`), so no build is needed first.
+[MIT](LICENSE)

@@ -2,6 +2,7 @@
   "name": "@depwave/git",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "description": "GitPort implementation over the git CLI.",
   "type": "module",
   "exports": {
