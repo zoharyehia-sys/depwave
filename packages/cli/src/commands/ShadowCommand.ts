@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { compareShadow, nodeId } from '@depwave/core';
+import { compareShadow } from '@depwave/core';
 import { GitService } from '@depwave/git';
 import { renderShadowMarkdown, renderShadowText } from '@depwave/reporters';
 import { Command, Option } from 'clipanion';
@@ -48,12 +48,8 @@ export class ShadowCommand extends Command {
 
       const pipeline = await createPipeline(cwd, { cache: this.cache, granularity: this.granularity });
       closeCache = () => pipeline.deps.cache?.close();
-      const { report, plan, graph } = await pipeline.impact({ base: this.base, head: this.head });
-      const isTest = (path: string) => {
-        const node = graph.node(nodeId.file(path));
-        return node?.kind === 'file' && node.isTest;
-      };
-      const result = compareShadow(plan, run, isTest);
+      const { report, plan, testFiles } = await pipeline.impact({ base: this.base, head: this.head });
+      const result = compareShadow(plan, run, new Set(testFiles));
 
       const context = { base: report.base, head: report.head };
       const output = {

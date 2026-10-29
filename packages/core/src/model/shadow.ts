@@ -16,23 +16,25 @@ export interface ShadowRun {
  */
 export interface ShadowResult {
   /**
-   * sound: every failing test was selected. missed: at least one was not.
-   * inconclusive: nothing was missed, but some failures could not be traced to a file.
+   * An observation about this run, never a proof about the tests a selective run would skip.
+   * sound: every test file depwave knows has a result, and every one that failed was selected (or none failed).
+   * missed: a failing test file was not selected.
+   * inconclusive: nothing was missed, but the check was incomplete: some test files have no result (`partial`), or
+   * some failures could not be traced to a file. A failure there would have gone unchecked.
    */
   verdict: 'sound' | 'missed' | 'inconclusive';
-  /** A global trigger selected everything, so nothing can be missed. */
+  /** A global trigger selected everything, so nothing can be missed, and incomplete results don't matter. */
   runAll: boolean;
   /** Test files depwave selected. */
   selected: number;
-  /** Test files that appear in the results (the full run, unless `partial`). */
+  /** Files that appear in the results, test files or not. */
   ran: number;
-  /**
-   * The results are not a full run: they miss a selected test file, or contain no file depwave sees as a test.
-   * The verdict then covers only the files in the results, and `ran` is no denominator for the savings.
-   */
+  /** Some test files depwave knows at head have no result: `notRun` lists them. */
   partial: boolean;
-  /** Every test file in the head revision (the plan's `totalTests`): the savings denominator when `partial`. */
-  totalTests?: number;
+  /** Every test file at head: the denominator for what a selective run would have saved. */
+  totalTests: number;
+  /** Test files at head with no result, sorted: tests that didn't run, or ran under a runner whose results weren't passed. */
+  notRun: string[];
   /** Failing test files, sorted. */
   failed: string[];
   /** Failing test files depwave selected. */

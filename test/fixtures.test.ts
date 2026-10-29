@@ -10,7 +10,7 @@ const fixtures = await loadFixtures();
 const sorted = (xs: readonly string[]) => [...xs].sort();
 
 it('has the full fixture set', () => {
-  expect(fixtures.map((f) => f.name)).toEqual(['barrel-hell', 'cycles', 'dynamic-imports', 'instance-methods', 'npm-lockfile', 'pnpm-basic', 'pnpm-lockfile', 'runtime-deps', 'ts-paths', 'yarn-lockfile']);
+  expect(fixtures.map((f) => f.name)).toEqual(['barrel-hell', 'cycles', 'dynamic-imports', 'instance-methods', 'module-evaluation', 'npm-lockfile', 'pnpm-basic', 'pnpm-lockfile', 'runtime-deps', 'ts-paths', 'yarn-lockfile']);
 });
 
 describe.each(fixtures)('$name', ({ spec, files }) => {

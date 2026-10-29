@@ -123,8 +123,8 @@ flowchart LR
    and whitespace-only edits change nothing. Files that no import expresses, such as configs, data files, CI
    definitions and lockfiles, go through [rules](#changes-no-import-can-express).
 5. **Walk** backwards over the union of both graphs, so deleted code still reaches its old dependents. Every test file
-   reached is selected (`*.test.*` and `*.spec.*` with a JS or TS extension, and every file under `__tests__/`). The
-   shortest path to each one is kept for `depwave why`.
+   reached is selected (`*.test.*` and `*.spec.*` with a JS or TS extension, and every JS or TS file under
+   `__tests__/`). The shortest path to each one is kept for `depwave why`.
 
 **Two kinds of dependencies.** *Source dependencies* are what your code imports, and they form the graph. *Package
 dependencies* are what your workspace packages resolve to in the lockfile. depwave doesn't analyze third-party code.
@@ -147,6 +147,7 @@ symbol level to select a subset of what the file level selects.
 | `import(expr)` with a non-literal argument | The importer may load any file in its package |
 | `import.meta.glob('./x/*.ts')`, `require.context(…)`, `` import(`./x/${name}.ts`) `` | Every file the pattern matches |
 | Namespace imports (`import * as x`), CommonJS `require` | A dependency on every export of the target |
+| Loading a module: any value import (even of a name the importer never uses), and every module behind a barrel it imports from | A dependency on the module's top-level code and on initializers that run on load (`const h = register()`). Changing a function's body still selects only that function's users |
 | Type-only imports | Followed: a changed type can break a test's compile step |
 | Using a class | A dependency on every member of the class. Per-member tracking was [measured and rejected](docs/adr/0006-symbol-level-model.md): method calls through interface-typed values can't be bound without type information |
 | A test that spawns processes (`child_process`, `execa`, …) | It may run any file in its package |
@@ -177,6 +178,8 @@ These can cause a missed test. Know them before you skip tests based on depwave'
 - **Runtime wiring.** Dependency-injection containers, string-based plugin loading, reflection, and framework
   conventions such as file-system routing. Apart from the `*eslint*` and `*prettier*` lockfile rule, depwave doesn't
   detect a package loaded by name.
+- **Class-level load-time code.** Static blocks, static field initializers and decorators run when a module loads, but
+  a change there reaches only the class's users, not everything that loads the module.
 - **Files read across packages.** A test that reads another package's files by path, without importing anything from
   that package.
 - **Other languages.** Only TypeScript and JavaScript are parsed. Other files are treated as data files.
@@ -206,9 +209,9 @@ depwave shadow 2f61664a3bd4...d0d3fed2d141: 1 failing test file NOT selected ✘
 
 | Verdict | What it means | Exit code |
 |---|---|---|
-| `sound` | **No miss was observed in this run.** Every test file that failed was one depwave selected, or nothing failed | 0 |
+| `sound` | **No miss was observed in this run.** Every test file depwave knows has a result, and every one that failed was selected (or nothing failed) | 0 |
 | `missed` | A test file that failed was **not** selected: a flaky test, or a dependency depwave didn't see | **3** |
-| `inconclusive` | No miss was observed, but some failures can't be traced to a file (JUnit without file paths) | 0 |
+| `inconclusive` | No miss was observed, but the check was incomplete: some test files have no result (they're listed), or some failures can't be traced to a file (JUnit without file paths). A failure there would have gone unchecked | 0 |
 
 > [!IMPORTANT]
 > **`sound` is an observation about one run, not a proof.** It says that no failing test fell outside the selection
@@ -239,8 +242,8 @@ commit was compared with its parent. The baseline runs every test file on each o
 | Repository | Lockfile | Commits replayed | Test-file runs (baseline) | Skipped |
 |---|---|---|---|---|
 | tRPC | pnpm | 9 | 1,871 | **1,154 (62%)** |
-| Vite | pnpm | 11 | 4,716 | **1,513 (32%)** |
-| Jest | Yarn Berry, hoisted | 24 | 29,398 | **2,941 (10%)** |
+| Vite | pnpm | 11 | 4,573 | **1,451 (32%)** |
+| Jest | Yarn Berry, hoisted | 24 | 29,384 | **2,939 (10%)** |
 | Playwright | npm | 7 | 4,103 | 0 (0%) |
 
 - This covers **lockfile commits only**, not the everyday code changes depwave mostly sees.

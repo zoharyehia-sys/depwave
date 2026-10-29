@@ -18,8 +18,11 @@ export const DEFAULT_POLICY: ImpactPolicyOptions = {
 const DECAY = 0.85;
 
 /**
- * Multi-source reverse BFS: everything that transitively depends on a seed. First visit = shortest path, recorded in
- * `via` for `depwave why`. Confidence is the weakest edge on the best path. O(reachable nodes + edges).
+ * Multi-source reverse BFS: everything that transitively depends on a seed. The impacted SET is plain reachability.
+ * Confidence is the best weakest-link confidence over ALL paths (a longer certain path beats a shorter heuristic one);
+ * `via` and `distance` describe the path that achieved it, so `depwave why` explains the confidence it reports. Among
+ * equally confident paths, the first found (shortest) wins. A node is re-walked only when its confidence rises, at
+ * most twice, so this stays O(reachable nodes + edges).
  */
 export function predictImpact(graph: GraphView, seeds: readonly NodeId[], policy: ImpactPolicyOptions = DEFAULT_POLICY): ImpactedNode[] {
   const follow = new Set<EdgeKind>(policy.followEdges);
@@ -31,8 +34,13 @@ export function predictImpact(graph: GraphView, seeds: readonly NodeId[], policy
     const existing = impacted.get(id);
     if (existing) {
       if (confidence > existing.confidence) {
-        existing.confidence = confidence; // a later, equally-short or longer path may still be more certain
+        // A later (equally short or longer) path is more certain: take it, so `via` explains the confidence, and walk
+        // on from here again so everything behind inherits it. Confidence only rises, at most twice per node.
+        existing.confidence = confidence;
+        existing.distance = from.distance + 1;
+        existing.via = from.id;
         existing.score = score(existing.distance, confidence);
+        queue.push(id);
       }
       return;
     }

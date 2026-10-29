@@ -6,7 +6,7 @@ import { loadTreeSitter, type TreeSitterLanguageAdapter, type TreeSitterRuntime 
  * Part of every facts cache key. Bump it whenever extraction output can change: extractor logic,
  * web-tree-sitter or grammar upgrades.
  */
-export const PARSER_VERSION = 'ts-3';
+export const PARSER_VERSION = 'ts-4';
 
 /** Tree-sitter facade: source files in, FileFacts out. Sequential for now; the Piscina worker pool comes later. */
 export class ASTParser implements ParserPort {

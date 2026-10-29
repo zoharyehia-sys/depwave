@@ -335,6 +335,20 @@ describe('module side effects', () => {
   ])('%s → %s', (source, expected) => {
     expect(facts(source, 'javascript').hasSideEffects).toBe(expected);
   });
+
+  it('flags exactly the symbols whose initializers run code on load', () => {
+    const f = facts(
+      [
+        "const handler = register('x');",
+        'export const { a, b } = createPair();',
+        'export const limit = 5;',
+        'export const later = () => register("y");',
+        'export function fn() { return register("z"); }',
+        'export default makeDefault();',
+      ].join('\n'),
+    );
+    expect(f.symbols.filter((s) => s.effectful).map((s) => s.name).sort()).toEqual(['a', 'b', 'default', 'handler']);
+  });
 });
 
 describe('robustness', () => {

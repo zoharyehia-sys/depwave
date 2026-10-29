@@ -74,6 +74,8 @@ export interface ImpactResult {
   stats: RunStats;
   /** Base ∪ head graph the impact walk ran on: what `depwave why` reads edges from. */
   graph: GraphView;
+  /** Every test file at head, sorted: what a full run should report on (shadow mode checks completeness against it). */
+  testFiles: string[];
 }
 
 interface Snapshot {
@@ -128,7 +130,8 @@ export class AnalysisPipeline {
     const graph = new UnionGraph([after.graph, before.graph]);
     const impacted = predictImpact(graph, changeSet.seeds);
     const plan = selectTests(impacted, after.graph, changeSet, after.workspace);
-    plan.totalTests = [...after.graph.nodes('file')].filter((f) => f.isTest).length;
+    const testFiles = [...after.graph.nodes('file')].filter((f) => f.isTest).map((f) => f.path).sort();
+    plan.totalTests = testFiles.length;
 
     return {
       report: {
@@ -145,6 +148,7 @@ export class AnalysisPipeline {
       plan,
       stats: this.stats,
       graph,
+      testFiles,
     };
   }
 

@@ -213,7 +213,7 @@ describe('depwave shadow', () => {
     }
   });
 
-  it('measures savings against every test file when the results are partial, or recognize none', async () => {
+  it('is inconclusive on partial results, naming what has no result, with savings against every test file', async () => {
     const files = new Map([['package.json', '{ "name": "demo" }\n']]);
     for (const name of ['a', 'b']) {
       files.set(`src/${name}.ts`, `export const ${name} = 1;\n`);
@@ -225,17 +225,21 @@ describe('depwave shadow', () => {
       const head = repo.commit('change a');
       const args = ['shadow', '--cwd', repo.dir, '--base', base, '--head', head, '--no-cache'];
 
-      const partial = await run([...args, '--results', results(repo.dir, [], ['src/a1.test.ts'])]);
+      // Only the selected a-tests ran and passed: the b-tests have no result, so nothing proves a b-failure would be caught.
+      const partial = await run([...args, '--results', results(repo.dir, [], ['src/a1.test.ts', 'src/a2.test.ts', 'src/a3.test.ts'])]);
       expect(partial.code).toBe(0);
-      expect(partial.stdout).toContain('partial results (1 of 6 test files): a selective run would have run 3 of 6 test files (50% skipped)');
-      expect(partial.stdout).not.toContain('of 1 test file');
+      expect(partial.stdout).toContain('no miss seen, but 3 of 6 test files have no result ?');
+      expect(partial.stdout).toContain('a selective run would have run 3 of 6 test files (50% skipped)');
+      expect(partial.stdout).toContain('no result for: src/b1.test.ts, src/b2.test.ts and src/b3.test.ts');
 
       // A failure outside the repository: no recognized file, and the failure can't be traced.
       const none = await run([...args, '--results', results(repo.dir, ['../elsewhere/x.test.ts'], []), '--format', 'json']);
       expect(none.code).toBe(0);
       expect(JSON.parse(none.stdout).shadow).toMatchObject({ verdict: 'inconclusive', selected: 3, ran: 0, partial: true, totalTests: 6 });
-      const noneText = await run([...args, '--results', results(repo.dir, ['../elsewhere/x.test.ts'], [])]);
-      expect(noneText.stdout).toContain('partial results (0 of 6 test files): a selective run would have run 3 of 6 test files (50% skipped)');
+
+      // Every test file reported: now a pass is a real pass.
+      const complete = await run([...args, '--results', results(repo.dir, [], [...files.keys()].filter((p) => p.endsWith('.test.ts')))]);
+      expect(complete.stdout).toContain('no failures, nothing to miss ✔');
     } finally {
       repo.dispose();
     }

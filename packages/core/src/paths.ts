@@ -32,6 +32,7 @@ export function resolveRelative(base: string, relative: string): string | undefi
 export const stripBom = (text: string): string => (text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
 
 const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
+const JS_OR_TS = /\.[cm]?[jt]sx?$/;
 
-/** Default test-file convention: `*.test.*`, `*.spec.*`, or anything under `__tests__/`. */
-export const isTestPath = (path: string): boolean => TEST_FILE.test(path) || path.split('/').includes('__tests__');
+/** Default test-file convention (Jest's): `*.test.*` / `*.spec.*`, or any JS/TS file under `__tests__/` (not its JSON or snapshots). */
+export const isTestPath = (path: string): boolean => TEST_FILE.test(path) || (JS_OR_TS.test(path) && path.split('/').includes('__tests__'));

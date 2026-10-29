@@ -19,6 +19,7 @@ fixtures/<name>/
 | `yarn-lockfile` | Real yarn berry lockfiles (pinned with `yarn set resolution`, so they match the manifests) |
 | `pnpm-lockfile` | Lockfile diffs narrowed to the packages whose dependency closure changed; root, settings and hoisting fall back to everything |
 | `instance-methods` | Methods called on interface-typed instances: a class must depend on all its members (regression found by self-hosting) |
+| `module-evaluation` | Code that runs because a module loads: unused named imports, effectful initializers, side effects behind a barrel; function-body changes stay narrow (from an external review) |
 
 ## Rules for golden files
 
