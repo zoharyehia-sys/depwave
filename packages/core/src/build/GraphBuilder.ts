@@ -9,7 +9,7 @@ import type { ResolverPort } from '../ports/resolver.js';
 import { ReExportResolver } from './ReExportResolver.js';
 
 /** Bump whenever linking output can change for the same inputs: it's part of every snapshot cache key. */
-export const GRAPH_VERSION = 6;
+export const GRAPH_VERSION = 7;
 
 /** Modules that start processes or workers: a test using them can execute any file of its package. */
 const SPAWN_MODULES = new Set([
@@ -80,7 +80,7 @@ class Linker {
   private readonly packagesByDepth: WorkspacePackage[];
   private readonly sources: ReadonlyMap<string, Inventory['files'][number]>;
   private readonly granularity: Granularity;
-  private readonly resolutions = new Map<string, string | undefined>();
+  private readonly resolutions = new Map<string, { path: string; also: readonly string[] } | undefined>();
   private readonly binder: ReExportResolver;
 
   constructor(private readonly input: GraphBuildInput) {
@@ -256,6 +256,19 @@ class Linker {
     }
     const to = this.input.facts.has(target) ? nodeId.symbol(target, MODULE_SYMBOL) : this.addFile(target, this.sourceDetails(target));
     if (to !== from) this.edge(from, to, 'IMPORTS', ownerFile);
+    this.linkAlternatives(from, this.resolved(path, specifier)?.also ?? [], 'IMPORTS', false, ownerFile);
+  }
+
+  /**
+   * The other files a conditional export can load (ResolutionResult.also). Which one runs depends on the runtime, so
+   * each gets a whole-file edge: `likely`, since only one of them loads. Symbols bind to the primary target only.
+   */
+  private linkAlternatives(from: NodeId, also: readonly string[], kind: EdgeKind, typeOnly: boolean, ownerFile: NodeId): void {
+    for (const path of also) {
+      const to = this.addFile(path, this.sourceDetails(path));
+      if (to === from) continue;
+      this.graph.addEdge({ from, to, kind, confidence: Confidence.likely, ownerFile, ...(typeOnly ? { typeOnly } : {}) });
+    }
   }
 
   private reportIfUnresolved(path: string, specifier: string): void {
@@ -265,10 +278,14 @@ class Linker {
 
   /** Resolved repository path for a specifier, memoized (the binder asks for the same pairs repeatedly). */
   private resolvePath(from: string, specifier: string): string | undefined {
+    return this.resolved(from, specifier)?.path;
+  }
+
+  private resolved(from: string, specifier: string): { path: string; also: readonly string[] } | undefined {
     const key = `${from}\u0000${specifier}`;
     if (!this.resolutions.has(key)) {
       const result = this.input.resolver.resolve(from, specifier);
-      this.resolutions.set(key, result.kind === 'file' ? result.path : undefined);
+      this.resolutions.set(key, result.kind === 'file' ? { path: result.path, also: result.also ?? [] } : undefined);
     }
     return this.resolutions.get(key);
   }
@@ -298,8 +315,8 @@ class Linker {
     }
     if (result.kind !== 'file') return; // third-party and builtins: lockfile triggers cover them
     const to = this.addFile(result.path, this.sourceDetails(result.path));
-    if (to === from) return;
-    this.graph.addEdge({ from, to, kind, confidence: Confidence.certain, ownerFile, ...(typeOnly ? { typeOnly } : {}) });
+    if (to !== from) this.graph.addEdge({ from, to, kind, confidence: Confidence.certain, ownerFile, ...(typeOnly ? { typeOnly } : {}) });
+    this.linkAlternatives(from, result.also ?? [], kind, typeOnly, ownerFile);
   }
 
   /** `./locales/*.ts` → every tracked file it matches. A template may contain '/', so '*' spans directories. */

@@ -34,17 +34,18 @@ export type Explanation =
   | { kind: 'unknown'; target: string };
 
 /**
- * Explains why `targetPath` is (or isn't) impacted, using the shortest path the impact walk recorded.
+ * Explains why `targetPath` is (or isn't) impacted, along the shortest path with the confidence the walk reported.
  * Each step names the concrete relation (calls, re-exports, dynamic import…) looked up in the graph, and the path's
  * origin is classified as a direct change or a global trigger, so a config-driven selection is never dressed up as code.
  */
 export function explainImpact(targetPath: string, report: ImpactReport, graph: GraphView): Explanation {
   const targetId = nodeId.file(targetPath);
-  if (!report.impacted.some((n) => n.id === targetId)) {
+  const target = report.impacted.find((n) => n.id === targetId);
+  if (!target) {
     return graph.node(targetId) ? { kind: 'not-impacted', target: targetPath, changedFiles: report.changedFiles } : { kind: 'unknown', target: targetPath };
   }
 
-  const ids = explainPath(report.impacted, targetId);
+  const ids = explainPath(graph, report.seeds, target);
   const steps: ExplanationStep[] = ids.map((id, i) => {
     const step = describe(id, graph.node(id));
     if (i === 0) return step;

@@ -460,41 +460,43 @@ global triggers (from ImpactPolicy):
 
 ### 4.4 Blast-radius traversal
 
-**Core algorithm: multi-source reverse BFS** over the `in` adjacency, starting from all seeds at distance 0.
+**Core algorithm: multi-source reverse BFS** over the `in` adjacency, starting from all seeds at distance 0. It runs once
+per confidence level, each run following only edges at least that confident; a node's confidence is the highest level
+that reaches it, and its distance and `why` path come from that level's run. One walk that upgrades nodes in place
+can't give both: an upgraded node's longer, more certain path is the wrong one for a dependent whose own edge caps it
+lower anyway, and `maxDepth` would then cut a node that a shorter path reaches.
 
 ```ts
 function predict(g: CsrGraph, seeds: number[], policy: ImpactPolicy): ImpactReport {
+  const runs = [HEURISTIC, LIKELY, CERTAIN].map((level) => bfs(g, seeds, policy, level));
+  return buildReport(runs);                         // reachable = runs[HEURISTIC]; confidence = highest run that has it
+}
+
+function bfs(g: CsrGraph, seeds: number[], policy: ImpactPolicy, level: number) {
   const dist = new Int32Array(g.size).fill(-1);
   const parent = new Int32Array(g.size).fill(-1);   // for `depwave why` path reconstruction
-  const conf = new Uint8Array(g.size);              // weakest-link confidence along the path
-  const queue = new Int32Array(3 * g.size); let head = 0, tail = 0; // each node: first visit + ≤ 2 upgrades
+  const queue = new Int32Array(g.size); let head = 0, tail = 0;
 
-  const visit = (u: number, from: number, edgeConf: number) => {
-    const c = Math.min(conf[from], edgeConf);
-    if (dist[u] === -1) {                                  // first visit = shortest path
-      dist[u] = dist[from] + 1; parent[u] = from; conf[u] = c; queue[tail++] = u;
-    } else if (c > conf[u]) {
-      conf[u] = c; dist[u] = dist[from] + 1; parent[u] = from; // a more certain path wins (why explains it)
-      queue[tail++] = u;                                   // and re-walks, so dependents inherit it (≤ 2× per node)
-    }
+  const visit = (u: number, from: number) => {
+    if (dist[u] === -1) { dist[u] = dist[from] + 1; parent[u] = from; queue[tail++] = u; } // first visit = shortest
   };
 
-  for (const s of seeds) { dist[s] = 0; conf[s] = CERTAIN; queue[tail++] = s; }
+  for (const s of seeds) { dist[s] = 0; queue[tail++] = s; }
 
   while (head < tail) {
     const v = queue[head++];
     if (policy.maxDepth && dist[v] >= policy.maxDepth) continue;
     for (const e of g.reverseEdges(v)) {
-      if (policy.follows(e.kind, e.typeOnly)) visit(e.from, v, e.confidence); // e.g. skip type-only for runtime impact
+      if (e.confidence >= level && policy.follows(e.kind, e.typeOnly)) visit(e.from, v); // e.g. skip type-only for runtime impact
     }
     // Soundness for fully dynamic imports: a file with import(expr) may load ANY file in its package,
     // so reaching any file of package P also reaches P's wildcard dependents. (A reverse walk never
     // *arrives at* the unresolved node itself, so the widening must hang off the package instead.)
-    if (policy.mode === 'conservative') {
-      for (const f of g.wildcardDependents(g.packageOf(v))) visit(f, v, HEURISTIC);
+    if (level === HEURISTIC && policy.mode === 'conservative') {
+      for (const f of g.wildcardDependents(g.packageOf(v))) visit(f, v);
     }
   }
-  return buildReport(dist, parent, conf);
+  return { dist, parent };
 }
 ```
 

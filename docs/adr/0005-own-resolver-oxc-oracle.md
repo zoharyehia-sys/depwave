@@ -20,6 +20,9 @@ oxc-resolver 11.x's JS API reads the real disk directly. It has no pluggable fil
 - Semantics follow TypeScript's `bundler` mode, the most permissive: extensionless imports, `index` files,
   `.js` → `.ts` aliasing, tsconfig `paths`/`baseUrl`/`extends`/`customConditions`, and package `exports`/`imports`.
   Where the spec is strict, we're lenient (all matching conditions in priority order), because leniency only adds edges.
+  A specifier whose conditions (or `types` / `module` / `main`) name different files resolves to all of them: the first
+  is its target, the rest `also`, each a `likely` whole-file edge. Which one runs depends on the runtime (a TS `import`
+  compiled to CommonJS takes `require`), so picking one would hide the others.
 - Workspace packages resolve through their manifests, never `node_modules`. Missing build outputs map back to sources
   (tsconfig `outDir` → `rootDir`, else conventional `dist|build|out|lib|esm|cjs` → `src`).
 - **oxc-resolver is a devDependency and a differential oracle**: every fixture is checked out, workspace packages are linked

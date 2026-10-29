@@ -203,6 +203,34 @@ describe('workspace packages (no node_modules anywhere)', () => {
     expect(target(withCondition.resolve('app/a.ts', 'env'))).toBe('packages/env/src/dev.ts');
   });
 
+  it('every distinct file a conditional export or main field can load is listed, the first as `path`', () => {
+    const also = (r: ReturnType<ModuleResolver['resolve']>) => (r.kind === 'file' ? [r.path, ...(r.also ?? [])] : []);
+    const r = repo(
+      {
+        'packages/dual/package.json': { name: 'dual', exports: { '.': { types: './index.d.ts', import: './esm.mjs', require: './cjs.cjs' } } },
+        'packages/dual/index.d.ts': '',
+        'packages/dual/esm.mjs': '',
+        'packages/dual/cjs.cjs': '',
+        // Built outputs that all map back to one source stay one file.
+        'packages/built/package.json': { name: 'built', exports: { '.': { types: './dist/index.d.ts', import: './dist/index.mjs', require: './dist/index.cjs' } } },
+        'packages/built/src/index.ts': '',
+        'packages/legacy/package.json': { name: 'legacy', types: './index.d.ts', module: './index.mjs', main: './index.js' },
+        'packages/legacy/index.d.ts': '',
+        'packages/legacy/index.mjs': '',
+        'packages/legacy/index.js': '',
+        'package.json': { name: 'root', imports: { '#impl': { node: './src/node.ts', default: './src/web.ts' } } },
+        'src/node.ts': '',
+        'src/web.ts': '',
+      },
+      [['dual', 'packages/dual'], ['built', 'packages/built'], ['legacy', 'packages/legacy']],
+    );
+    expect(also(r.resolve('app/a.ts', 'dual'))).toEqual(['packages/dual/index.d.ts', 'packages/dual/esm.mjs', 'packages/dual/cjs.cjs']);
+    expect(r.resolve('app/a.ts', 'built')).toMatchObject({ kind: 'file', path: 'packages/built/src/index.ts' });
+    expect(r.resolve('app/a.ts', 'built')).not.toHaveProperty('also');
+    expect(also(r.resolve('app/a.ts', 'legacy'))).toEqual(['packages/legacy/index.d.ts', 'packages/legacy/index.mjs', 'packages/legacy/index.js']);
+    expect(also(r.resolve('src/a.ts', '#impl'))).toEqual(['src/node.ts', 'src/web.ts']);
+  });
+
   it('maps missing build outputs back to sources via tsconfig outDir/rootDir (like this repo)', () => {
     const r = repo(
       {

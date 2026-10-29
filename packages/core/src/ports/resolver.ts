@@ -1,7 +1,16 @@
 import type { UnresolvedReason } from '../model/graph.js';
 
 export type ResolutionResult = (
-  | { kind: 'file'; path: string }
+  | {
+      kind: 'file';
+      path: string;
+      /**
+       * Other files the specifier can load: conditional exports (`import` / `require` / `types`, …) whose targets
+       * differ. Which one runs depends on the runtime (a TS `import` compiled to CommonJS takes `require`), so an
+       * importer depends on all of them. `path` is the first in the package author's priority order.
+       */
+      also?: readonly string[];
+    }
   | { kind: 'external'; packageName: string; specifier: string }
   | { kind: 'unresolved'; reason: UnresolvedReason }
 ) & {
