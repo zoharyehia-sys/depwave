@@ -17,7 +17,7 @@ import { TsConfigLoader, type TsConfig } from './tsconfig.js';
 import { Lookup, VirtualFileSystem } from './vfs.js';
 
 /** Bump when resolution behaviour changes: it's part of every configHash, so cached resolutions invalidate. */
-export const RESOLVER_VERSION = 2;
+export const RESOLVER_VERSION = 3;
 
 export interface ModuleResolverOptions {
   /** package.json conditions, in addition to tsconfig `customConditions`. `default` always matches. */
@@ -42,12 +42,15 @@ const OUTPUT_DIRS = ['dist', 'build', 'out', 'lib', 'esm', 'cjs'];
 const BUILTINS = new Set(builtinModules);
 
 type Outcome =
-  | { kind: 'file'; path: string }
+  | { kind: 'file'; path: string; also?: readonly string[] }
   | { kind: 'external'; packageName: string; specifier: string }
   | { kind: 'unresolved'; reason: UnresolvedReason };
 
 const unresolved = (reason: UnresolvedReason): Outcome => ({ kind: 'unresolved', reason });
 const file = (path: string): Outcome => ({ kind: 'file', path });
+/** The first of several candidate files, with the rest as `also`. */
+const files = ([path, ...also]: readonly string[]): Outcome | undefined =>
+  path === undefined ? undefined : also.length === 0 ? file(path) : { kind: 'file', path, also };
 
 /**
  * Resolves import specifiers against one revision of the repository, recording every path it checks.
@@ -190,14 +193,16 @@ export class ModuleResolver implements ResolverPort {
     const targets = manifest && importsTargets(manifest['imports'], specifier, conditions);
     if (!targets || manifestPath === undefined) return unresolved('not-found');
 
+    const found: string[] = [];
     for (const target of targets) {
       if (target.startsWith('./')) {
-        const found = this.fileOrDirectory(lookup, resolvePath(dirOf(manifestPath), target));
-        if (found !== undefined) return file(found);
-      } else if (!target.startsWith('#')) {
+        const path = this.fileOrDirectory(lookup, resolvePath(dirOf(manifestPath), target));
+        if (path !== undefined && !found.includes(path)) found.push(path);
+      } else if (!target.startsWith('#') && found.length === 0) {
         return this.resolveSpecifier(lookup, from, target); // "#dep": "some-package"
       }
     }
+    return files(found) ?? unresolved('not-found');
     return unresolved('not-found');
   }
 
@@ -209,17 +214,16 @@ export class ModuleResolver implements ResolverPort {
 
     if (manifest?.['exports'] !== undefined) {
       const targets = exportsTargets(manifest['exports'], subpath, conditions);
-      const found = targets && this.packageTargets(lookup, pkg, targets);
-      return found === undefined ? unresolved('not-found') : file(found);
+      return (targets && files(this.packageTargets(lookup, pkg, targets))) ?? unresolved('not-found');
     }
 
-    let found: string | undefined;
     if (subpath === '.') {
+      // `types`, `module` and `main` can name different files (declarations, ESM, CommonJS): any of them may load.
       const mainTargets = MAIN_FIELDS.map((field) => manifest?.[field]).filter((v): v is string => typeof v === 'string');
-      found = this.packageTargets(lookup, pkg, mainTargets) ?? this.index(lookup, pkg.root);
-    } else {
-      found = this.fileOrDirectory(lookup, resolvePath(pkg.root, subpath));
+      const found = this.packageTargets(lookup, pkg, mainTargets);
+      return files(found.length > 0 ? found : [this.index(lookup, pkg.root)].filter((p) => p !== undefined)) ?? unresolved('not-found');
     }
+    const found = this.fileOrDirectory(lookup, resolvePath(pkg.root, subpath));
     return found === undefined ? unresolved('not-found') : file(found);
   }
 
@@ -251,21 +255,25 @@ export class ModuleResolver implements ResolverPort {
     return sameName.reduce((best, p) => (shared(p.root) > shared(best.root) ? p : best));
   }
 
-  /** Package targets in priority order: any that exists as-is wins; otherwise map build outputs back to sources. */
-  private packageTargets(lookup: Lookup, pkg: WorkspacePackage, targets: readonly string[]): string | undefined {
+  /**
+   * Every distinct file the targets load, each one as-is or else mapped from a build output back to its source. The
+   * first is the primary: any target that exists as-is wins over a mapped one, then priority order.
+   */
+  private packageTargets(lookup: Lookup, pkg: WorkspacePackage, targets: readonly string[]): string[] {
     const paths = targets
       .filter((t) => !t.startsWith('../') && !t.startsWith('/'))
       .map((t) => resolvePath(pkg.root, t))
       .filter((p): p is string => p !== undefined);
-    for (const path of paths) {
-      const found = this.file(lookup, path);
+    const asIs = paths.map((path) => this.file(lookup, path));
+    const mapped = paths.map((path, i) => asIs[i] ?? this.mappedSource(lookup, pkg, path));
+    const found = [...asIs, ...mapped].filter((p): p is string => p !== undefined);
+    return [...new Set(found)];
+  }
+
+  private mappedSource(lookup: Lookup, pkg: WorkspacePackage, target: string): string | undefined {
+    for (const source of this.sourceCandidates(lookup, pkg, target)) {
+      const found = this.fileOrDirectory(lookup, source);
       if (found !== undefined) return found;
-    }
-    for (const path of paths) {
-      for (const source of this.sourceCandidates(lookup, pkg, path)) {
-        const found = this.fileOrDirectory(lookup, source);
-        if (found !== undefined) return found;
-      }
     }
     return undefined;
   }

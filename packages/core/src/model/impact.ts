@@ -15,11 +15,11 @@ export interface ImpactPolicyOptions {
 
 export interface ImpactedNode {
   id: NodeId;
-  /** Length of the `via` path: hops back to a seed along the most certain path found. */
+  /** Hops back to a seed along the shortest path that gives `confidence`. */
   distance: number;
   /** Best weakest-link confidence over every path from a seed. */
   confidence: Confidence;
-  /** Next node back to a seed on the path that gives `confidence` (for `depwave why`); undefined for seeds. */
+  /** Next node back to a seed on that path; undefined for seeds. `explainPath` gives the whole path. */
   via?: NodeId;
   score: number;
 }

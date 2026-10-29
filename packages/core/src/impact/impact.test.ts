@@ -5,7 +5,7 @@ import { Confidence, type GraphEdge } from '../model/graph.js';
 import { nodeId } from '../model/ids.js';
 import type { LockfileDiff } from '../model/changes.js';
 import type { Workspace } from '../model/workspace.js';
-import { explainPath, predictImpact } from './ImpactPredictor.js';
+import { DEFAULT_POLICY, explainPath, predictImpact } from './ImpactPredictor.js';
 import { allTests, selectTests } from './TestSelector.js';
 
 const f = (path: string) => nodeId.file(path);
@@ -49,7 +49,7 @@ describe('predictImpact', () => {
       [f('p/d.ts'), 3],
       [f('p/d.test.ts'), 4],
     ]);
-    expect(explainPath(impacted, f('p/d.test.ts'))).toEqual([f('p/d.test.ts'), f('p/d.ts'), f('p/a.ts'), f('p/b.ts'), f('p/c.ts')]);
+    expect(explainPath(g, [f('p/c.ts')], impacted.find((n) => n.id === f('p/d.test.ts'))!)).toEqual([f('p/d.test.ts'), f('p/d.ts'), f('p/a.ts'), f('p/b.ts'), f('p/c.ts')]);
   });
 
   it('keeps the weakest link on a path but upgrades when a more certain path exists', () => {
@@ -77,7 +77,25 @@ describe('predictImpact', () => {
     const byId = new Map(impacted.map((n) => [n.id, n]));
     expect(byId.get(f('p/mid.ts'))).toMatchObject({ confidence: Confidence.certain, via: f('p/a.ts'), distance: 2 });
     expect(byId.get(f('p/leaf.test.ts'))).toMatchObject({ confidence: Confidence.certain, distance: 3 });
-    expect(explainPath(impacted, f('p/leaf.test.ts'))).toEqual([f('p/leaf.test.ts'), f('p/mid.ts'), f('p/a.ts'), f('p/x.ts')]);
+    expect(explainPath(g, [f('p/x.ts')], byId.get(f('p/leaf.test.ts'))!)).toEqual([f('p/leaf.test.ts'), f('p/mid.ts'), f('p/a.ts'), f('p/x.ts')]);
+  });
+
+  it('an upgrade at an intermediate node does not lengthen the path its dependents need', () => {
+    // b is reached in one heuristic hop, then upgraded to certain through a (two hops). leaf hangs off b by a heuristic
+    // edge, so it is heuristic either way: its best path is x → b → leaf, two hops, which maxDepth 2 must still reach.
+    const g = graph(['p/x.ts', 'p/a.ts', 'p/b.ts', 'p/leaf.test.ts'], [
+      ['p/a.ts', 'p/x.ts'],
+      ['p/b.ts', 'p/x.ts', { confidence: Confidence.heuristic }],
+      ['p/b.ts', 'p/a.ts'],
+      ['p/leaf.test.ts', 'p/b.ts', { confidence: Confidence.heuristic }],
+    ]);
+    const impacted = predictImpact(g, [f('p/x.ts')]);
+    const byId = new Map(impacted.map((n) => [n.id, n]));
+    expect(byId.get(f('p/b.ts'))).toMatchObject({ confidence: Confidence.certain, distance: 2, via: f('p/a.ts') });
+    expect(byId.get(f('p/leaf.test.ts'))).toMatchObject({ confidence: Confidence.heuristic, distance: 2, via: f('p/b.ts') });
+    expect(explainPath(g, [f('p/x.ts')], byId.get(f('p/leaf.test.ts'))!)).toEqual([f('p/leaf.test.ts'), f('p/b.ts'), f('p/x.ts')]);
+    const policy = { ...DEFAULT_POLICY, maxDepth: 2 };
+    expect(predictImpact(g, [f('p/x.ts')], policy).map((n) => n.id)).toContain(f('p/leaf.test.ts'));
   });
 
   it('respects maxDepth and the type-only policy', () => {

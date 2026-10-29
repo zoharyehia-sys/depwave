@@ -261,3 +261,53 @@ describe('impact --format markdown (end to end)', () => {
     void head;
   });
 });
+
+describe('soundness regressions (end to end)', () => {
+  /** Base commit from `files`, head commit with `changes` applied; returns the selected test files. */
+  async function selected(files: Record<string, string>, changes: Record<string, string>): Promise<string[]> {
+    const { repo, commit: base } = TempRepo.from(new Map(Object.entries(files)));
+    repos.push(repo);
+    for (const [path, content] of Object.entries(changes)) repo.write(path, content);
+    const head = repo.commit('change');
+    const { plan } = await (await createPipeline(repo.dir, { cache: false })).impact({ base, head });
+    return allTests(plan);
+  }
+
+  // As .tsx, `<any>helper()` is a JSX element: no symbol `v`, no call to helper. Facts are per (content, language),
+  // so the .ts copy must keep its own, whichever of the two is parsed last.
+  it.each(['src/b.tsx', 'src/0.tsx'])('identical bytes in a .ts file and %s keep their own parse', async (tsxPath) => {
+    const same = "import { helper } from './helper';\nexport const v = <any>helper();\n";
+    const tests = await selected(
+      {
+        'package.json': '{ "name": "same-bytes", "private": true }\n',
+        'src/helper.ts': 'export function helper() {\n  return 1;\n}\n',
+        'src/a.ts': same,
+        [tsxPath]: same,
+        'src/a.test.ts': "import { v } from './a';\nit('v', () => expect(v).toBe(1));\n",
+      },
+      { 'src/helper.ts': 'export function helper() {\n  return 2;\n}\n' },
+    );
+    expect(tests).toEqual(['src/a.test.ts']);
+  });
+
+  // Which branch of a conditional export runs depends on the runtime (a TS `import` compiled to CommonJS takes
+  // `require`), so a test depends on every implementation its specifier can load.
+  it.each([
+    ['packages/lib/cjs.cjs', 'exports.x = 2;\n'],
+    ['packages/lib/esm.mjs', 'export const x = 2;\n'],
+  ])('a conditional export reaches the test through %s', async (changed, content) => {
+    const tests = await selected(
+      {
+        'package.json': '{ "name": "root", "private": true }\n',
+        'pnpm-workspace.yaml': "packages:\n  - 'packages/*'\n",
+        'packages/lib/package.json': JSON.stringify({ name: '@acme/lib', exports: { '.': { import: './esm.mjs', require: './cjs.cjs' } } }),
+        'packages/lib/esm.mjs': 'export const x = 1;\n',
+        'packages/lib/cjs.cjs': 'exports.x = 1;\n',
+        'packages/app/package.json': JSON.stringify({ name: 'app', dependencies: { '@acme/lib': 'workspace:*' } }),
+        'packages/app/src/lib.test.js': "const lib = require('@acme/lib');\nit('x', () => expect(lib.x).toBe(1));\n",
+      },
+      { [changed]: content },
+    );
+    expect(tests).toEqual(['packages/app/src/lib.test.js']);
+  });
+});

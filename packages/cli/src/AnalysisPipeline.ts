@@ -92,7 +92,8 @@ interface Snapshot {
  * Graphs come from git (no checkout). Commits hit the L3 snapshot cache; everything else hits L1 facts per file.
  */
 export class AnalysisPipeline {
-  private readonly factsByHash = new Map<string, FileFacts>();
+  /** Facts by content AND language: the same bytes parse differently as .ts and .tsx (`<T>x` is a cast or JSX). */
+  private readonly factsByContent = new Map<string, FileFacts>();
   private stats: RunStats = { snapshotHits: 0, factsFromCache: 0, filesParsed: 0 };
   private cache: CachePort | undefined;
   private readonly granularity: Granularity;
@@ -209,13 +210,13 @@ export class AnalysisPipeline {
 
   private async parse(rev: Revision, files: readonly SourceFile[]): Promise<Map<string, FileFacts>> {
     const parserVersion = this.deps.parser.version;
-    let missing = files.filter((f) => !this.factsByHash.has(f.contentHash));
+    let missing = files.filter((f) => !this.factsByContent.has(contentKey(f)));
 
     // L1: facts are a pure function of content, so any cached copy is valid.
     missing = missing.filter((f) => {
       const cached = this.cached((c) => c.getFacts({ contentHash: f.contentHash, language: f.language, parserVersion }));
       if (!cached) return true;
-      this.factsByHash.set(f.contentHash, cached);
+      this.factsByContent.set(contentKey(f), cached);
       this.stats.factsFromCache++;
       return false;
     });
@@ -225,7 +226,7 @@ export class AnalysisPipeline {
       const inputs = missing.filter((f) => contents.has(f.path)).map((f) => ({ ...f, content: contents.get(f.path)! }));
       const fresh: FileFacts[] = [];
       for await (const facts of this.deps.parser.extract(inputs)) {
-        this.factsByHash.set(facts.contentHash, facts);
+        this.factsByContent.set(contentKey(facts), facts);
         fresh.push(facts);
       }
       this.stats.filesParsed += fresh.length;
@@ -235,7 +236,7 @@ export class AnalysisPipeline {
     // Identical content at another path (copies, renames) shares facts; re-stamp the path.
     return new Map(
       files.flatMap((f) => {
-        const facts = this.factsByHash.get(f.contentHash);
+        const facts = this.factsByContent.get(contentKey(f));
         return facts ? [[f.path, { ...facts, path: f.path }] as const] : [];
       }),
     );
@@ -271,6 +272,8 @@ export interface PipelineOptions {
   /** Default 'symbol'. */
   granularity?: Granularity;
 }
+
+const contentKey = (f: { contentHash: string; language: string }) => `${f.language}\u0000${f.contentHash}`;
 
 /** Composition root: the only place adapters are instantiated. */
 export async function createPipeline(cwd: string, options: PipelineOptions = {}): Promise<AnalysisPipeline> {
