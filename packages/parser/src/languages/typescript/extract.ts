@@ -12,7 +12,7 @@ import type {
   SymbolKind,
 } from '@depwave/core';
 import type { Node } from 'web-tree-sitter';
-import { combinedTokenHash, tokenHash } from '../../hash.js';
+import { TokenStream } from '../../hash.js';
 
 export type ExtractedFacts = Omit<FileFacts, 'contentHash' | 'parserVersion'>;
 
@@ -30,8 +30,9 @@ const EFFECTFUL = new Set(['call_expression', 'new_expression', 'await_expressio
  * Pass 1 visits top-level statements (bindings, symbols, exports). Pass 2 walks every code body for references,
  * so a call to a function declared further down the file still resolves.
  */
-export function extractTypeScriptFacts(root: Node, path: string, language: LanguageId): ExtractedFacts {
-  const extractor = new Extractor(language);
+export function extractTypeScriptFacts(root: Node, source: string, path: string, language: LanguageId): ExtractedFacts {
+  const tokens = new TokenStream(root, source);
+  const extractor = new Extractor(language, tokens);
   extractor.run(root);
   return {
     path,
@@ -41,7 +42,7 @@ export function extractTypeScriptFacts(root: Node, path: string, language: Langu
     symbols: extractor.symbols,
     references: [...extractor.references.values()],
     hasSideEffects: extractor.hasSideEffects,
-    moduleHash: combinedTokenHash(extractor.moduleNodes),
+    moduleHash: tokens.combinedHash(extractor.moduleNodes),
     parseErrors: countParseErrors(root),
   };
 }
@@ -68,7 +69,10 @@ class Extractor {
   /** `export { a }` may precede `const a`: applied after pass 1. */
   private readonly pendingExports: Array<[local: string, as: true | 'default']> = [];
 
-  constructor(private readonly language: LanguageId) {}
+  constructor(
+    private readonly language: LanguageId,
+    private readonly tokens: TokenStream,
+  ) {}
 
   run(root: Node): void {
     for (const statement of root.namedChildren) {
@@ -326,7 +330,7 @@ class Extractor {
 
   private addSymbol(name: string, kind: SymbolKind, exported: boolean | 'default', spanNode: Node, hashNode: Node, parent?: string): void {
     const span = toSpan(spanNode);
-    const bodyHash = tokenHash(hashNode);
+    const bodyHash = this.tokens.hash(hashNode);
     if (!parent) this.bound.add(name);
 
     // Overloads and declaration merging (interface + namespace) produce one symbol spanning all declarations.

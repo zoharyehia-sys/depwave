@@ -255,6 +255,12 @@ describe('bodyHash', () => {
     const tsxHash = (src: string) => facts(src, 'tsx').symbols[0]!.bodyHash;
     expect(tsxHash(`const C = () => <p>Hello   world</p>;`)).toBe(tsxHash(`const C = () => <p>\n  Hello world\n</p>;`));
   });
+
+  it('is stable: hashes are cached, so changing one needs a PARSER_VERSION bump (then update these values)', () => {
+    const { symbols, moduleHash } = facts(`export function f(a: number) {\n  // comment\n  return <b>  hi  {a}</b>;\n}\nconsole.log(f(1));\n`, 'tsx', 'src/a.tsx');
+    expect(symbols[0]!.bodyHash).toBe('00dc6ee32a1390b4');
+    expect(moduleHash).toBe('e6249942393bee10');
+  });
 });
 
 describe('references', () => {

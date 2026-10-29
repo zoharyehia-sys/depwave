@@ -29,6 +29,12 @@ inputs:
       the step when one was missed. Run this action after your tests, with `if: !cancelled()`.
     required: false
     default: ''
+  cache:
+    description: >-
+      Keep depwave's analysis cache (`.depwave/`) between runs with `actions/cache`. Only files and commits not seen
+      before are analyzed again.
+    required: false
+    default: 'true'
   github-token:
     description: 'Token used to comment. Needs `pull-requests: write`.'
     required: false
@@ -80,6 +86,17 @@ runs:
         pnpm install --frozen-lockfile
         TURBO_TELEMETRY_DISABLED=1 pnpm build
 
+    # Everything in the cache is keyed by file content or commit, so a restored cache is never stale. One entry per
+    # commit; restore-keys picks the newest entry this run can read: its own branch's, else the base branch's.
+    - name: Restore the analysis cache
+      id: restore-cache
+      if: inputs.cache == 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ github.workspace }}/.depwave
+        key: depwave-${{ runner.os }}-${{ github.sha }}
+        restore-keys: depwave-${{ runner.os }}-
+
     - name: Analyze the pull request
       id: analyze
       shell: bash
@@ -125,6 +142,13 @@ runs:
         ' "$JSON" >> "$GITHUB_OUTPUT"
         echo "report=$JSON" >> "$GITHUB_OUTPUT"
         echo "markdown=$MD" >> "$GITHUB_OUTPUT"
+
+    - name: Save the analysis cache
+      if: inputs.cache == 'true' && steps.restore-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ github.workspace }}/.depwave
+        key: ${{ steps.restore-cache.outputs.cache-primary-key }}
 
     - name: Comment on the pull request
       if: inputs.comment == 'true' && github.event_name == 'pull_request'

@@ -20,8 +20,8 @@ export class TypeScriptAdapter implements TreeSitterLanguageAdapter {
     this.grammar = id === 'typescript' ? 'typescript' : 'tsx';
   }
 
-  extractFacts(tree: Tree, _source: string, path: string): ExtractedFacts {
-    return extractTypeScriptFacts(tree.rootNode, path, this.id);
+  extractFacts(tree: Tree, source: string, path: string): ExtractedFacts {
+    return extractTypeScriptFacts(tree.rootNode, source, path, this.id);
   }
 
   isTestFile(path: string): boolean {

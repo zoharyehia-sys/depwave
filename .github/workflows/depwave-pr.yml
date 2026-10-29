@@ -1,7 +1,11 @@
 name: depwave
 
-# Dogfooding the action: every PR to this repo gets depwave's impact comment.
-on: pull_request
+# Dogfooding the action: every PR to this repo gets depwave's impact comment. Pushes to main fill the analysis cache
+# that every PR's first run starts from.
+on:
+  pull_request:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
