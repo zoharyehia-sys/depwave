@@ -55,7 +55,7 @@ describe('YAML files GitHub reads', () => {
       runs: { using: string };
     };
     expect(action.runs.using).toBe('composite');
-    expect(Object.keys(action.inputs).sort()).toEqual(['base', 'comment', 'explain', 'github-token', 'granularity', 'test-results']);
+    expect(Object.keys(action.inputs).sort()).toEqual(['base', 'cache', 'comment', 'explain', 'github-token', 'granularity', 'test-results']);
     for (const [name, output] of Object.entries(action.outputs)) expect(output.value, name).toBe(`\${{ steps.analyze.outputs.${name} }}`);
   });
 });
@@ -66,6 +66,20 @@ describe('action.yml', () => {
   it('runs the built CLI with markdown output and posts it through post-comment.mjs', () => {
     expect(action).toContain('--format markdown --explain "$INPUT_EXPLAIN"');
     expect(action).toContain('node "$GITHUB_ACTION_PATH/action/post-comment.mjs" "$REPORT_MD"');
+  });
+
+  it('restores the analysis cache before analyzing and saves it after, under one per-commit key', () => {
+    type Step = { name?: string; uses?: string; if?: string; with?: Record<string, string> };
+    const steps = (parseDocument(action).toJS() as { runs: { steps: Step[] } }).runs.steps;
+    const at = (name: string) => steps.findIndex((s) => s.name === name);
+    const [restore, save] = [steps[at('Restore the analysis cache')]!, steps[at('Save the analysis cache')]!];
+    expect(at('Restore the analysis cache')).toBeLessThan(at('Analyze the pull request'));
+    expect(at('Save the analysis cache')).toBeGreaterThan(at('Analyze the pull request'));
+    expect([restore.uses, save.uses]).toEqual(['actions/cache/restore@v4', 'actions/cache/save@v4']);
+    expect(restore.with!['path']).toBe('${{ github.workspace }}/.depwave'); // the CLI's cachePath for --cwd $GITHUB_WORKSPACE
+    expect(save.with!['path']).toBe(restore.with!['path']);
+    expect(save.with!['key']).toBe('${{ steps.restore-cache.outputs.cache-primary-key }}');
+    for (const step of [restore, save]) expect(step.if).toContain("inputs.cache == 'true'");
   });
 
   it('never interpolates ${{ }} expressions straight into a shell script', () => {

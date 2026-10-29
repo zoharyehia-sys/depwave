@@ -412,7 +412,7 @@ sequenceDiagram
 | **L2: Resolutions** | `(fromDir, specifier, resolverConfigHash)` + stored `probed[]` | (a) any `tsconfig`/`package.json` in scope changes, which changes `resolverConfigHash`; (b) a file is **added/deleted** at a path in some entry's `probed[]` | Resolution depends on what *doesn't* exist. Adding `utils.ts` next to `utils/index.ts` changes what `./utils` resolves to, even though no importing file changed. Tracking negative probes catches this. Most tools get it wrong. |
 
 > **Measured (2026-10-27): L2 is stored and tested but not wired in.** Our resolver runs over an in-memory virtual FS at ~4.1 µs per import; an L2 SQLite hit costs ~5.9 µs *before* any staleness check. Probe tracking still matters: it is what makes resolution results trustworthy, and it is what a disk-backed resolver (or a long-running daemon) would key on. L1 + L3 deliver the speed-up.
-| **L3: Graph snapshots** | `commitSha` (+ config hash) | Never. Commits are immutable. | Lets CI start from the merge-base graph instead of a cold build. Snapshots are stored as a compact binary (msgpack + CSR arrays) inside SQLite. |
+| **L3: Graph snapshots** | `commitSha` (+ config hash) | Never: commits are immutable. Evicted oldest first beyond a 64 MB budget (the newest two always stay) and rebuilt from L1 when needed again. | Lets CI start from the merge-base graph instead of a cold build. Snapshots are stored gzipped inside SQLite. |
 
 ### 4.2 `applyDelta` algorithm (git diff → updated graph)
 

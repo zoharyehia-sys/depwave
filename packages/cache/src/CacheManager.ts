@@ -44,6 +44,13 @@ const TABLES = ['resolution_probes', 'resolutions', 'facts', 'snapshots', 'meta'
 /** SQLite's bound-parameter limit is 32766; stay far below it. */
 const CHUNK = 500;
 
+/**
+ * Snapshots are kept newest first until they add up to this many (gzipped) bytes. The newest two always stay: they are
+ * the base and head of the run that just saved them. Without a bound, a cache restored and saved by every CI run
+ * grows by a snapshot or two each time.
+ */
+export const SNAPSHOT_BUDGET_BYTES = 64 * 1024 * 1024;
+
 type Statements = ReturnType<typeof prepare>;
 
 /**
@@ -52,7 +59,8 @@ type Statements = ReturnType<typeof prepare>;
  *  L1 facts        (content hash, language, parser version) → FileFacts. Content-addressed, so never stale.
  *  L2 resolutions  (importer dir, specifier, resolver config hash) → result + probed paths, indexed by path
  *                  so adding/deleting a file drops exactly the resolutions that checked it.
- *  L3 snapshots    (commit, analysis config) → gzipped graph. Commits are immutable, so never stale.
+ *  L3 snapshots    (commit, analysis config) → gzipped graph. Commits are immutable, so never stale. The newest
+ *                  are kept up to a byte budget; an evicted one is rebuilt from L1 facts.
  *
  * Opens lazily. Every batch write is one transaction: a crash leaves the previous state, never a torn one.
  * A corrupt or foreign-schema file is deleted and rebuilt rather than failing the analysis.
@@ -61,7 +69,10 @@ export class CacheManager implements CachePort {
   private db: Database.Database | undefined;
   private statements: Statements | undefined;
 
-  constructor(readonly dbPath: string) {}
+  constructor(
+    readonly dbPath: string,
+    private readonly snapshotBudget = SNAPSHOT_BUDGET_BYTES,
+  ) {}
 
   getFacts(key: FactsKey): FileFacts | undefined {
     const row = this.sql().getFacts.get(key.contentHash, key.language, key.parserVersion) as { data: string } | undefined;
@@ -113,7 +124,12 @@ export class CacheManager implements CachePort {
   }
 
   saveSnapshot(snapshot: GraphSnapshot): void {
-    this.sql().putSnapshot.run(snapshot.commit, snapshot.configHash, gzipSync(JSON.stringify(snapshot)), Date.now());
+    const { putSnapshot, pruneSnapshots } = this.sql();
+    const data = gzipSync(JSON.stringify(snapshot));
+    this.transaction(() => {
+      putSnapshot.run(snapshot.commit, snapshot.configHash, data, Date.now());
+      pruneSnapshots.run(this.snapshotBudget);
+    });
   }
 
   stats(): CacheStats {
@@ -202,6 +218,14 @@ function prepare(db: Database.Database) {
     putProbe: db.prepare('INSERT INTO resolution_probes (resolution_id, path) VALUES (?, ?)'),
     getSnapshot: db.prepare('SELECT data FROM snapshots WHERE commit_sha = ? AND config_hash = ?'),
     putSnapshot: db.prepare('INSERT OR REPLACE INTO snapshots (commit_sha, config_hash, data, created_at) VALUES (?, ?, ?, ?)'),
+    pruneSnapshots: db.prepare(
+      `DELETE FROM snapshots WHERE (commit_sha, config_hash) IN (
+         SELECT commit_sha, config_hash FROM (
+           SELECT commit_sha, config_hash, ROW_NUMBER() OVER newest AS n, SUM(length(data)) OVER newest AS total FROM snapshots
+           WINDOW newest AS (ORDER BY created_at DESC, commit_sha, config_hash ROWS UNBOUNDED PRECEDING)
+         ) WHERE n > 2 AND total > ?
+       )`,
+    ),
     stats: db.prepare(
       'SELECT (SELECT COUNT(*) FROM facts) AS facts, (SELECT COUNT(*) FROM resolutions) AS resolutions, (SELECT COUNT(*) FROM snapshots) AS snapshots',
     ),

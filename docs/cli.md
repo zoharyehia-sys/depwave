@@ -98,6 +98,7 @@ file selects every test, since it changes what's analyzed.
 
 Both keys are immutable inputs, so entries can't go stale. Upgrading depwave changes the analysis version, so old
 entries are no longer used. Uncommitted work (`WORKTREE`) is never snapshotted, but still reuses parsed facts per file.
+Snapshots are kept newest first up to 64 MB, and the newest two always stay. A dropped one is rebuilt from facts.
 
 The cache never changes an answer. If it fails (a corrupt file, a full disk, a missing native binary), the run
 continues uncached with a warning. A third layer, for module resolutions, is implemented but not used: resolving over

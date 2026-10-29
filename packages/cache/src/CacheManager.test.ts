@@ -1,16 +1,17 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { Confidence, SNAPSHOT_FORMAT, type FileFacts, type GraphSnapshot, type ResolutionResult } from '@depwave/core';
 import Database from 'better-sqlite3';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CacheManager, SCHEMA_VERSION } from './CacheManager.js';
 
 let dir: string;
 let dbPath: string;
 const open: CacheManager[] = [];
-const cache = () => {
-  const c = new CacheManager(dbPath);
+const cache = (snapshotBudget?: number) => {
+  const c = new CacheManager(dbPath, snapshotBudget);
   open.push(c);
   return c;
 };
@@ -20,6 +21,7 @@ beforeEach(() => {
   dbPath = join(dir, '.depwave', 'cache.db');
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   open.splice(0).forEach((c) => c.close());
   rmSync(dir, { recursive: true, force: true });
 });
@@ -175,6 +177,29 @@ describe('L3 snapshots', () => {
     expect(c.loadSnapshot('abc', 'v1')).toEqual(snapshot('abc'));
     expect(c.loadSnapshot('abc', 'v2')).toBeUndefined();
     expect(c.loadSnapshot('def', 'v1')).toBeUndefined();
+  });
+
+  describe('byte budget', () => {
+    const commits = ['c0', 'c1', 'c2', 'c3', 'c4'];
+    const bytes = gzipSync(JSON.stringify(snapshot('c0'))).length;
+    const saveInOrder = (c: CacheManager) =>
+      commits.forEach((commit, i) => {
+        vi.spyOn(Date, 'now').mockReturnValue(1_000 + i);
+        c.saveSnapshot(snapshot(commit));
+      });
+    const kept = (c: CacheManager) => commits.filter((commit) => c.loadSnapshot(commit, 'v1'));
+
+    it('keeps the newest snapshots that fit', () => {
+      const c = cache(3.5 * bytes);
+      saveInOrder(c);
+      expect(kept(c)).toEqual(['c2', 'c3', 'c4']);
+    });
+
+    it('always keeps the newest two: the base and head of the run that saved them', () => {
+      const c = cache(1);
+      saveInOrder(c);
+      expect(kept(c)).toEqual(['c3', 'c4']);
+    });
   });
 });
 

@@ -285,6 +285,9 @@ jobs:
         run: npx vitest run $TESTS
 ```
 
+The action keeps its cache between runs, so only files and commits it hasn't seen are analyzed: on Jest's repository,
+about 8 seconds cold and 1.6 with the cache, measured locally ([Caching](docs/github-action.md#caching)).
+
 There are no releases yet, so pin a full commit SHA rather than a moving branch. This exact workflow runs on every
 pull request to this repository. The [Action guide](docs/github-action.md) covers every input and output, what runs
 in each case, shadow mode in CI, and other CI systems.

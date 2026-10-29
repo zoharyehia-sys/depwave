@@ -61,6 +61,36 @@ so the code your CI runs could change without you knowing. Update the SHA delibe
 - `fetch-depth: 0` matters: without the merge base, the action fails with
   `depwave: base 'origin/main' not found. Check out with 'fetch-depth: 0' so the merge base is available.`
 
+## Caching
+
+The action keeps depwave's cache (`.depwave/`) between runs with `actions/cache`. Parsed files are keyed by content and
+graphs by commit, so a restored cache is never stale: only files and commits depwave hasn't seen are analyzed. On
+Jest's repository (2,339 source files), measured locally, the analysis takes about 8 seconds without the cache and 1.6
+with it. Set `cache: 'false'` to turn it off.
+
+A pull request's first run can only restore a cache from the PR itself or from its base branch. To make first runs
+warm too, run the action on pushes to the base branch:
+
+```yaml
+# .github/workflows/depwave-cache.yml
+on:
+  push:
+    branches: [main]
+jobs:
+  cache:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: zoharyehia-sys/depwave@ad89e7cbf88996aa4509391b5bab1b88c9535179
+        with:
+          comment: 'false'
+```
+
+Each cache entry holds the parsed files plus at most 64 MB of commit graphs. GitHub evicts entries that go unused for
+a week.
+
 ## Inputs
 
 | Input | Default | Meaning |
@@ -70,6 +100,7 @@ so the code your CI runs could change without you knowing. Update the SHA delibe
 | `explain` | `3` | `depwave why` paths for the top N tests in the comment (`0` for none) |
 | `comment` | `true` | Post or update the sticky PR comment |
 | `test-results` | | Shadow mode: results of a full test run (paths separated by spaces or newlines) |
+| `cache` | `true` | Keep depwave's cache between runs (see [Caching](#caching)) |
 | `github-token` | `github.token` | Token for the comment. Needs `pull-requests: write` |
 
 ## Outputs
