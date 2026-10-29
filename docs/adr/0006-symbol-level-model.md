@@ -30,6 +30,17 @@ A file plays two roles, so it gets two nodes:
 - `sym|<module> ─IMPORTS/DYNAMIC_IMPORT→ file`: side-effect imports, bare `require()`, and `import()`, attributed to the
   enclosing symbol.
 - `file ─RE_EXPORTS→ file`: kept, so whole-module users of a barrel still see changes behind it.
+- **Module evaluation** (added 2026-10-29, from an external review): loading a module runs its top-level code whether or
+  not any binding is used, so
+  - `sym|<module> ─IMPORTS→ sym:T#<module>` for every value import (named or default, used or not) and every
+    re-export: loading the importer loads T, and a barrel's importers load every module behind it;
+  - `sym:F#<module> ─PART_OF→ sym:F#X` when X's initializer runs code on load (`const h = register()`; the parser
+    flags it as `effectful`).
+
+  Before this, `import { helper } from './setup'` with `helper` unused created no edge at all, so a change to
+  `setup.ts`'s top-level code (`registerGlobalHandler()`) missed the importer; so did an effectful initializer, and
+  any side effect in a module behind a barrel. Type-only imports are erased at runtime and get no evaluation edge.
+  Fixture `module-evaluation` pins all of it, including that function-body changes stay as narrow as before.
 
 ### Seeds
 Changed files are compared **structurally**, not by mapping diff hunks to line spans. Each symbol's `bodyHash` (tokens
@@ -41,6 +52,10 @@ git call per file, has line-range edge cases, and misreads moved code.
 ## Consequences
 - ✅ `barrel-hell`: 4/3/3 tests at file level → 2/1/0 at symbol level. A comment-only edit selects nothing.
 - ✅ Symbol ⊆ file on every golden scenario. File level stays available (`--granularity file`).
+- ⚠️ Module-level edits (imports, top-level statements, effectful initializers) reach everything that loads the module,
+  transitively, including through barrels: the barrel precision win holds for function and class bodies only.
+- ⚠️ Not yet covered: class static blocks, static field initializers and decorators also run on load, but a change there
+  seeds the class symbol, which reaches only the class's users.
 - ⚠️ Known widening: using a class pulls in all its methods. Type-aware method binding (TS Compiler API precision mode)
   could narrow this later.
 - ⚠️ Unused named imports create no edge. A module whose *top-level side effects* change does reach importers that

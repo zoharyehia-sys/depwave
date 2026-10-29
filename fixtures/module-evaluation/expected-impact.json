@@ -1,0 +1,112 @@
+{
+  "$schema": "../expected-impact.schema.json",
+  "description": "Code that runs because a module is loaded, not because a symbol is used: top-level statements, effectful initializers, and every module behind a barrel. A file that loads a module depends on its evaluation, whether or not it uses an import. Function-body changes keep symbol-level precision.",
+  "policy": "conservative",
+  "scenarios": [
+    {
+      "name": "top-level-side-effect-change",
+      "description": "setup.ts registers a handler at load time. app.test imports `helper` but never uses it; indirect.test loads setup through boot.ts; types.test uses a type from setup, which depends on its module scope.",
+      "changes": [
+        {
+          "op": "modify",
+          "path": "src/setup.ts",
+          "find": "register('global');",
+          "replace": "register('global-v2');"
+        }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "src/app.test.ts",
+            "src/indirect.test.ts",
+            "src/types.test.ts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "effectful-initializer-change",
+      "description": "`export const plugin = register('logger')` runs when config.ts loads. config.test never uses `plugin`, but loads config.ts.",
+      "changes": [
+        {
+          "op": "modify",
+          "path": "src/config.ts",
+          "find": "register('logger')",
+          "replace": "register('log')"
+        }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "src/config.test.ts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "side-effect-behind-a-barrel",
+      "description": "barrel.test imports only `a` from lib/index.ts, but loading the barrel loads b.ts, whose top-level code changed.",
+      "changes": [
+        {
+          "op": "modify",
+          "path": "src/lib/b.ts",
+          "find": "register('b');",
+          "replace": "register('bee');"
+        }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "src/barrel.test.ts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "function-body-behind-a-barrel",
+      "description": "Changing b()'s body doesn't change what loading b.ts does: symbol level still skips barrel.test, which uses only `a`.",
+      "changes": [
+        {
+          "op": "modify",
+          "path": "src/lib/b.ts",
+          "find": "return 'b';",
+          "replace": "return 'bee';"
+        }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "src/barrel.test.ts"
+          ]
+        },
+        "symbol": {
+          "impactedTests": []
+        }
+      }
+    },
+    {
+      "name": "function-body-of-an-unused-import",
+      "description": "Nobody calls helper(): its body changing affects no test at symbol level, although three tests load setup.ts.",
+      "changes": [
+        {
+          "op": "modify",
+          "path": "src/setup.ts",
+          "find": "return 'help';",
+          "replace": "return 'helps';"
+        }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "src/app.test.ts",
+            "src/indirect.test.ts",
+            "src/types.test.ts"
+          ]
+        },
+        "symbol": {
+          "impactedTests": []
+        }
+      }
+    }
+  ]
+}

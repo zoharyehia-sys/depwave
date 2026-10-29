@@ -126,8 +126,37 @@ describe('symbol-granularity graph', () => {
   it('binds references to defining symbols (through the barrel) and keeps module-level imports at the right source', () => {
     expect(out('sym:app/use.ts#run')).toEqual(['CALLS sym:lib/a.ts#a', 'IN_MODULE sym:app/use.ts#<module>']);
     expect(out('sym:app/use.ts#lazy')).toEqual(['DYNAMIC_IMPORT file:app/chunk.ts', 'IN_MODULE sym:app/use.ts#<module>']);
-    expect(out('sym:app/use.ts#<module>')).toEqual(['CALLS sym:app/use.ts#run', 'IMPORTS file:app/setup.ts']);
+    expect(out('sym:app/use.ts#<module>')).toEqual(['CALLS sym:app/use.ts#run', 'IMPORTS file:app/setup.ts', 'IMPORTS sym:lib/index.ts#<module>']);
     expect(out('sym:lib/a.ts#a')).toEqual(['CALLS sym:lib/a.ts#b', 'IN_MODULE sym:lib/a.ts#<module>']);
+  });
+
+  it('makes loading a module depend on its evaluation: value imports and re-exports, never type-only ones', () => {
+    // use.ts loads the barrel (above), and the barrel loads every module it re-exports from.
+    expect(out('sym:lib/index.ts#<module>')).toEqual(['IMPORTS sym:lib/a.ts#<module>']);
+    const evalFiles = [
+      facts('t.ts', { symbols: [sym('T')], exports: [local('T')] }),
+      facts('u.ts', { imports: [{ kind: 'type', specifier: './t', bindings: [{ imported: 'T', local: 'T' }], loc }, { ...named('./t', 'T'), bindings: [{ imported: 'T', local: 'T', typeOnly: true }] }] }),
+    ];
+    const evalWorld = world(evalFiles);
+    const built = buildGraph({
+      inventory: { rev: 'r', workspace: { tools: [], packages: [] }, files: evalFiles.map((f) => ({ path: f.path, language: 'typescript' as const, contentHash: f.contentHash })), paths: evalFiles.map((f) => f.path) },
+      facts: evalWorld.map,
+      resolver: evalWorld.port,
+      granularity: 'symbol',
+    });
+    expect([...built.graph.outEdges('sym:u.ts#<module>')]).toEqual([]);
+  });
+
+  it('makes module evaluation include initializers that run code on load', () => {
+    const effectful = [facts('reg.ts', { symbols: [{ ...sym('handler'), effectful: true }, sym('pure')] })];
+    const effWorld = world(effectful);
+    const built = buildGraph({
+      inventory: { rev: 'r', workspace: { tools: [], packages: [] }, files: [{ path: 'reg.ts', language: 'typescript', contentHash: 'c' }], paths: ['reg.ts'] },
+      facts: effWorld.map,
+      resolver: effWorld.port,
+      granularity: 'symbol',
+    });
+    expect([...built.graph.outEdges('sym:reg.ts#<module>')].map((e) => `${e.kind} ${e.to}`)).toEqual(['PART_OF sym:reg.ts#handler']);
   });
 
   it('makes a class depend on its members, so instance method calls (unbindable without types) stay sound', () => {

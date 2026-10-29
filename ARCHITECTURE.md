@@ -467,14 +467,15 @@ function predict(g: CsrGraph, seeds: number[], policy: ImpactPolicy): ImpactRepo
   const dist = new Int32Array(g.size).fill(-1);
   const parent = new Int32Array(g.size).fill(-1);   // for `depwave why` path reconstruction
   const conf = new Uint8Array(g.size);              // weakest-link confidence along the path
-  const queue = new Int32Array(g.size); let head = 0, tail = 0;
+  const queue = new Int32Array(3 * g.size); let head = 0, tail = 0; // each node: first visit + ≤ 2 upgrades
 
   const visit = (u: number, from: number, edgeConf: number) => {
     const c = Math.min(conf[from], edgeConf);
     if (dist[u] === -1) {                                  // first visit = shortest path
       dist[u] = dist[from] + 1; parent[u] = from; conf[u] = c; queue[tail++] = u;
     } else if (c > conf[u]) {
-      conf[u] = c;                                         // keep the best-confidence label (no re-enqueue needed for reporting)
+      conf[u] = c; dist[u] = dist[from] + 1; parent[u] = from; // a more certain path wins (why explains it)
+      queue[tail++] = u;                                   // and re-walks, so dependents inherit it (≤ 2× per node)
     }
   };
 

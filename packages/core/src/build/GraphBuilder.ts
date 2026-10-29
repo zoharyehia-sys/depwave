@@ -9,7 +9,7 @@ import type { ResolverPort } from '../ports/resolver.js';
 import { ReExportResolver } from './ReExportResolver.js';
 
 /** Bump whenever linking output can change for the same inputs: it's part of every snapshot cache key. */
-export const GRAPH_VERSION = 5;
+export const GRAPH_VERSION = 6;
 
 /** Modules that start processes or workers: a test using them can execute any file of its package. */
 const SPAWN_MODULES = new Set([
@@ -59,6 +59,14 @@ export interface GraphBuildResult {
  *  sym ─REFERENCES→ file               when the binding can't be known statically (namespace used as a value, assets)
  *  sym|<module> ─IMPORTS/DYNAMIC_IMPORT→ file   side-effect imports, bare require(), import() from the enclosing symbol
  *  file ─RE_EXPORTS→ file              kept, so whole-module users of a barrel still see changes behind it
+ *
+ * Module evaluation: loading a module runs its top-level code whether or not any binding is used, so
+ *
+ *  sym|<module> ─IMPORTS→ sym:T#<module>   every value import (named or default) and every re-export: loading the
+ *                                       importer loads T, so a barrel's importers load every module behind it
+ *  sym:F#<module> ─PART_OF→ sym:F#X     X's initializer runs on load (`const h = register()`)
+ *
+ * A function body changing seeds only that function, so these edges cost precision only for module-level changes.
  */
 export function buildGraph(input: GraphBuildInput): GraphBuildResult {
   return new Linker(input).link();
@@ -178,6 +186,7 @@ class Linker {
       // A class depends on all its members. Methods are mostly called on instances (often typed as an interface),
       // which syntax alone can't bind: whoever uses the class must see any of its methods change.
       if (symbol.parent !== undefined && names.has(symbol.parent)) this.edge(nodeId.symbol(path, symbol.parent), id, 'PART_OF', fileId);
+      if (symbol.effectful) this.edge(moduleId, id, 'PART_OF', fileId);
     }
 
     for (const fact of facts.imports) {
@@ -186,14 +195,19 @@ class Linker {
         this.linkImport(path, from, fact, fileId);
       } else if (fact.specifier !== undefined && (fact.kind === 'side-effect' || fact.bindings.length === 0)) {
         this.linkSpecifier(path, from, fact.specifier, 'IMPORTS', false, fileId); // import './x'; require('./x')
+      } else if (fact.specifier !== undefined && isTypeOnly(fact)) {
+        this.reportIfUnresolved(path, fact.specifier); // erased at runtime: only the type references that use it count
       } else if (fact.specifier !== undefined) {
-        this.reportIfUnresolved(path, fact.specifier); // bindings become edges through the references that use them
+        // Bindings become edges through the references that use them; loading the module is a dependency of its own.
+        this.linkEvaluation(path, from, fact.specifier, fileId, true);
       } else {
         this.linkImport(path, from, fact, fileId); // require(expr)
       }
     }
     for (const fact of facts.exports) {
-      if (fact.from !== undefined) this.linkSpecifier(path, fileId, fact.from, 'RE_EXPORTS', fact.typeOnly, fileId);
+      if (fact.from === undefined) continue;
+      this.linkSpecifier(path, fileId, fact.from, 'RE_EXPORTS', fact.typeOnly, fileId);
+      if (!fact.typeOnly) this.linkEvaluation(path, moduleId, fact.from, fileId, false); // a barrel loads what it re-exports
     }
 
     for (const ref of facts.references) {
@@ -230,6 +244,20 @@ class Linker {
     this.graph.addEdge({ from, to, kind, confidence: Confidence.certain, ownerFile, ...(typeOnly ? { typeOnly } : {}) });
   }
 
+  /**
+   * `from` loads the module at `specifier`, so it depends on that module's evaluation: its `<module>` symbol, or the
+   * whole file for modules without facts (assets, files depwave can't parse).
+   */
+  private linkEvaluation(path: string, from: NodeId, specifier: string, ownerFile: NodeId, report: boolean): void {
+    const target = this.resolvePath(path, specifier);
+    if (target === undefined) {
+      if (report) this.reportIfUnresolved(path, specifier);
+      return;
+    }
+    const to = this.input.facts.has(target) ? nodeId.symbol(target, MODULE_SYMBOL) : this.addFile(target, this.sourceDetails(target));
+    if (to !== from) this.edge(from, to, 'IMPORTS', ownerFile);
+  }
+
   private reportIfUnresolved(path: string, specifier: string): void {
     const result = this.input.resolver.resolve(path, specifier);
     if (result.kind === 'unresolved') this.unresolved.push({ from: path, specifier, reason: result.reason });
@@ -249,7 +277,7 @@ class Linker {
 
   private linkImport(path: string, from: NodeId, fact: ImportFact, ownerFile: NodeId = from): void {
     const kind: EdgeKind = fact.kind === 'dynamic' ? 'DYNAMIC_IMPORT' : 'IMPORTS';
-    const typeOnly = fact.kind === 'type' || (fact.bindings.length > 0 && fact.bindings.every((b) => b.typeOnly));
+    const typeOnly = isTypeOnly(fact);
 
     if (fact.specifier !== undefined) {
       this.linkSpecifier(path, from, fact.specifier, kind, typeOnly, ownerFile);
@@ -294,7 +322,7 @@ class Linker {
    */
   private externalsOf(path: string, facts: FileFacts): string[] {
     const specifiers = [
-      ...facts.imports.filter((i) => i.kind !== 'type' && !(i.bindings.length > 0 && i.bindings.every((b) => b.typeOnly))).map((i) => i.specifier),
+      ...facts.imports.filter((i) => !isTypeOnly(i)).map((i) => i.specifier),
       ...facts.exports.filter((e) => !e.typeOnly).map((e) => e.from),
     ];
     const names = new Set<string>();
@@ -315,6 +343,9 @@ class Linker {
     return this.packagesByDepth.find((p) => isWithin(path, p.root));
   }
 }
+
+/** `import type …`, or every binding is `type`: erased at runtime, so the module isn't loaded. */
+const isTypeOnly = (fact: ImportFact): boolean => fact.kind === 'type' || (fact.bindings.length > 0 && fact.bindings.every((b) => b.typeOnly));
 
 /**
  * Glob with `*` only (what the parser emits). A pattern without an extension (`./pages/*`) also matches files with

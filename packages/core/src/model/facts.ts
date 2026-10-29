@@ -74,6 +74,11 @@ export interface SymbolFact {
   bodyHash: string;
   /** Enclosing symbol for members, e.g. the class of a method. */
   parent?: string;
+  /**
+   * Its initializer runs code when the module loads (`const handler = register('x')`): loading the module, not using
+   * the symbol, is what exposes a change to it.
+   */
+  effectful?: true;
 }
 
 export type ReferenceKind = 'call' | 'reference' | 'jsx' | 'extends' | 'type';

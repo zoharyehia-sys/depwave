@@ -41,7 +41,8 @@ function renderPath(explanation: Extract<Explanation, { kind: 'impacted' }>, ran
   const rows = hops.map((step, i) => {
     const seedMark = i === hops.length - 1 ? `  ${seedLabel(explanation)}` : '';
     const uncertain = step.confidence !== undefined && step.confidence < Confidence.certain ? '~ ' : '→ ';
-    return { text: `${uncertain}${phrase(step)}${seedMark}`, where: location(step) };
+    const previous = i === 0 ? target : hops[i - 1];
+    return { text: `${uncertain}${phrase(step, previous)}${seedMark}`, where: location(step) };
   });
   const width = Math.max(0, ...rows.map((r) => r.text.length)) + 3;
 
@@ -63,11 +64,12 @@ function seedLabel(explanation: Extract<Explanation, { kind: 'impacted' }>): str
 }
 
 /** What the previous step does with this one, as a sentence fragment. */
-function phrase(step: ExplanationStep): string {
+function phrase(step: ExplanationStep, previous: ExplanationStep | undefined): string {
   const name = label(step);
   switch (step.relation) {
     case 'PART_OF':
-      return step.symbol === MODULE_SYMBOL ? 'runs its top-level code' : `which contains ${name}`;
+      if (step.symbol === MODULE_SYMBOL) return 'runs its top-level code';
+      return previous?.symbol === MODULE_SYMBOL ? `which runs ${name}'s initializer when it loads` : `which contains ${name}`;
     case 'IN_MODULE':
       return "which depends on its file's top-level code";
     case 'CALLS':

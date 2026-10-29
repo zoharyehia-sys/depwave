@@ -210,7 +210,7 @@ class Extractor {
     this.exports.push({ kind: 'local', name: 'default', local: name, typeOnly: false });
     if (CLASS_LIKE.has(value.type)) this.classMembers(value, name);
     this.bodies.push({ node: value, from: name, ...(CLASS_LIKE.has(value.type) ? { cls: name } : {}) });
-    if (hasModuleEffect(value)) this.hasSideEffects = true;
+    if (hasModuleEffect(value)) this.markEffectful([name]);
   }
 
   /** `module.exports = …`, `module.exports.x = …`, `exports.x = …` */
@@ -299,7 +299,7 @@ class Extractor {
       names.push(...declared);
       if (value) {
         this.bodies.push({ node: value, from: declared[0] ?? MODULE });
-        if (hasModuleEffect(value)) this.hasSideEffects = true;
+        if (hasModuleEffect(value)) this.markEffectful(declared);
       }
     }
     return names;
@@ -316,6 +316,12 @@ class Extractor {
 
   private functionKind(name: string): SymbolKind {
     return (this.language === 'tsx' || this.language === 'jsx') && /^[A-Z]/.test(name) ? 'component' : 'function';
+  }
+
+  /** These top-level symbols' initializers run code when the module loads (`const h = register()`). */
+  private markEffectful(names: readonly string[]): void {
+    this.hasSideEffects = true;
+    for (const symbol of this.symbols) if (symbol.parent === undefined && names.includes(symbol.name)) symbol.effectful = true;
   }
 
   private addSymbol(name: string, kind: SymbolKind, exported: boolean | 'default', spanNode: Node, hashNode: Node, parent?: string): void {

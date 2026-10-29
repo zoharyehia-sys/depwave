@@ -64,6 +64,22 @@ describe('predictImpact', () => {
     expect(byId.get(f('p/top.ts'))?.confidence).toBe(Confidence.certain);
   });
 
+  it('propagates a more certain path found later, through a longer route, to everything behind it', () => {
+    // mid is reached first in one hop through a heuristic glob edge, and processed; a certain path two hops long
+    // arrives after that. mid and its dependent must both end up certain, explained by the certain path.
+    const g = graph(['p/x.ts', 'p/a.ts', 'p/mid.ts', 'p/leaf.test.ts'], [
+      ['p/mid.ts', 'p/x.ts', { kind: 'DYNAMIC_IMPORT', confidence: Confidence.heuristic }],
+      ['p/a.ts', 'p/x.ts'],
+      ['p/mid.ts', 'p/a.ts'],
+      ['p/leaf.test.ts', 'p/mid.ts'],
+    ]);
+    const impacted = predictImpact(g, [f('p/x.ts')]);
+    const byId = new Map(impacted.map((n) => [n.id, n]));
+    expect(byId.get(f('p/mid.ts'))).toMatchObject({ confidence: Confidence.certain, via: f('p/a.ts'), distance: 2 });
+    expect(byId.get(f('p/leaf.test.ts'))).toMatchObject({ confidence: Confidence.certain, distance: 3 });
+    expect(explainPath(impacted, f('p/leaf.test.ts'))).toEqual([f('p/leaf.test.ts'), f('p/mid.ts'), f('p/a.ts'), f('p/x.ts')]);
+  });
+
   it('respects maxDepth and the type-only policy', () => {
     const g = graph(['p/a.ts', 'p/b.ts', 'p/c.ts'], [
       ['p/b.ts', 'p/a.ts', { typeOnly: true }],

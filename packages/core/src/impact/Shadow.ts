@@ -2,30 +2,32 @@ import type { TestPlan } from '../model/impact.js';
 import type { ShadowResult, ShadowRun, TestFileOutcome } from '../model/shadow.js';
 
 /**
- * Compares a selection with a full test run. `isTest` says whether depwave classifies a path as a test file at head;
- * results outside that set are reported as `unrecognized`, since depwave could never select them.
+ * Compares a selection with a full test run. `testFiles` is every file depwave classifies as a test at head: results
+ * outside it are `unrecognized` (depwave could never select them), and test files without a result are `notRun`.
+ * `sound` needs a result for every test file: a failure in one with no result would otherwise go unchecked.
  */
-export function compareShadow(plan: TestPlan, run: ShadowRun, isTest: (path: string) => boolean): ShadowResult {
+export function compareShadow(plan: TestPlan, run: ShadowRun, testFiles: ReadonlySet<string>): ShadowResult {
   const selected = new Set(plan.groups.flatMap((g) => g.tests));
   const byFile = mergeByFile(run.outcomes);
 
   const failed = [...byFile].filter(([, status]) => status === 'failed').map(([path]) => path).sort();
   const caught = plan.runAll ? failed : failed.filter((p) => selected.has(p));
   const missed = plan.runAll ? [] : failed.filter((p) => !selected.has(p));
-  const unrecognized = [...byFile.keys()].filter((p) => !isTest(p)).sort();
-  const partial = unrecognized.length === byFile.size || [...selected].some((p) => !byFile.has(p));
+  const unrecognized = [...byFile.keys()].filter((p) => !testFiles.has(p)).sort();
+  const notRun = [...testFiles].filter((p) => !byFile.has(p)).sort();
 
   let verdict: ShadowResult['verdict'] = 'sound';
   if (missed.length > 0) verdict = 'missed';
-  else if (run.unattributedFailures > 0 && !plan.runAll) verdict = 'inconclusive';
+  else if (!plan.runAll && (notRun.length > 0 || run.unattributedFailures > 0)) verdict = 'inconclusive';
 
   return {
     verdict,
     runAll: plan.runAll,
     selected: selected.size,
     ran: byFile.size,
-    partial,
-    ...(plan.totalTests === undefined ? {} : { totalTests: plan.totalTests }),
+    partial: notRun.length > 0,
+    totalTests: testFiles.size,
+    notRun,
     failed,
     caught,
     missed,
