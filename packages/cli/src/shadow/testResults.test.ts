@@ -96,6 +96,71 @@ describe('parseTestResults', () => {
     expect(parseTestResults(xml).outcomes).toEqual([{ file: 'a & b/x.test.ts', status: 'passed' }]);
   });
 
+  it('never reads a status it does not know as a pass: the file gets no result, so the run is inconclusive', () => {
+    const json = (file: object) => JSON.stringify({ testResults: [file] });
+    const name = 'src/a.test.ts';
+    expect(parseTestResults(json({ name, status: 'crashed', assertionResults: [] })).outcomes).toEqual([]);
+    expect(parseTestResults(json({ name, status: 'passed', assertionResults: [{ status: 'exploded' }] })).outcomes).toEqual([]);
+    expect(parseTestResults(json({ name, assertionResults: [] })).outcomes).toEqual([]);
+    // A known failure still wins, and every status Jest and Vitest document is understood.
+    expect(parseTestResults(json({ name, status: 'crashed', assertionResults: [{ status: 'failed' }] })).outcomes).toEqual([{ file: name, status: 'failed' }]);
+    const documented = ['passed', 'skipped', 'pending', 'todo', 'disabled', 'focused'].map((status) => ({ status }));
+    expect(parseTestResults(json({ name, status: 'passed', assertionResults: documented })).outcomes).toEqual([{ file: name, status: 'passed' }]);
+    // Without a name it can't become a "no result" entry either, so it counts as a failure it can't place.
+    expect(parseTestResults(json({ status: 'crashed' }))).toEqual({ outcomes: [], unattributedFailures: 1 });
+  });
+
+  it('JUnit: comments, CDATA and namespaces do not change what the report says', () => {
+    const xml = `<?xml version="1.0"?>
+      <ns:testsuite xmlns:ns="urn:x" name="src/a.test.ts">
+        <!-- <failure>an old run</failure> -->
+        <ns:testcase name="t"><system-out><![CDATA[log: <failure message="not a real one"/>]]></system-out></ns:testcase>
+        <ns:testcase name="u"><ns:failure message="real"/></ns:testcase>
+      </ns:testsuite>`;
+    expect(parseTestResults(xml).outcomes).toEqual([
+      { file: 'src/a.test.ts', status: 'passed' },
+      { file: 'src/a.test.ts', status: 'failed' },
+    ]);
+  });
+
+  it('JUnit: a failure on the suite itself counts, attributed when the suite names a file', () => {
+    // A file that fails to load has no testcase to hang the failure on.
+    const declared = '<testsuites><testsuite name="src/broken.test.ts" errors="1" tests="0"/></testsuites>';
+    expect(parseTestResults(declared)).toEqual({ outcomes: [{ file: 'src/broken.test.ts', status: 'failed' }], unattributedFailures: 0 });
+
+    const element = '<testsuite name="src/broken.test.ts"><error message="cannot load"/></testsuite>';
+    expect(parseTestResults(element).outcomes).toEqual([{ file: 'src/broken.test.ts', status: 'failed' }]);
+
+    const nameless = '<testsuite name="Unit tests" failures="1"/>';
+    expect(parseTestResults(nameless)).toEqual({ outcomes: [], unattributedFailures: 1 });
+  });
+
+  it('JUnit: counts that testcases already explain add nothing, at any nesting level', () => {
+    const xml = `<testsuites failures="1" errors="1">
+      <testsuite name="src/a.test.ts" failures="1" errors="1">
+        <testcase name="t"><failure/></testcase>
+        <testcase name="u"><error/></testcase>
+      </testsuite>
+    </testsuites>`;
+    expect(parseTestResults(xml)).toEqual({
+      outcomes: [
+        { file: 'src/a.test.ts', status: 'failed' },
+        { file: 'src/a.test.ts', status: 'failed' },
+      ],
+      unattributedFailures: 0,
+    });
+  });
+
+  it('JUnit: rejects malformed and truncated documents instead of reading part of them', () => {
+    expect(() => parseTestResults('<testsuite><testcase></testsuite>', 'r.xml')).toThrow(/^r\.xml: invalid XML/);
+    expect(() => parseTestResults('<testsuite name="a"><testcase name="t"/>', 'r.xml')).toThrow(/^r\.xml: invalid XML/);
+  });
+
+  it('JUnit: does not expand entities a document defines for itself', () => {
+    const bomb = '<!DOCTYPE t [<!ENTITY a "aaaaaaaaaa"><!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;">]><testsuite name="&b;"/>';
+    expect(() => parseTestResults(bomb, 'r.xml')).toThrow(/^r\.xml: invalid XML/);
+  });
+
   it('rejects files that are neither format, naming the file', () => {
     expect(() => parseTestResults('PASS src/a.test.ts', 'out.txt')).toThrow(/^out\.txt: not a Vitest\/Jest JSON report or JUnit XML/);
     expect(() => parseTestResults('{"numTests": 1}', 'r.json')).toThrow(/no "testResults" array/);

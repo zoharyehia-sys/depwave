@@ -14,7 +14,9 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -b"
   },
@@ -27,6 +29,7 @@
     "@depwave/resolver": "workspace:*",
     "@depwave/workspace": "workspace:*",
     "clipanion": "4.0.0-rc.4",
+    "saxes": "6.0.0",
     "typanion": "^3.14.0"
   }
 }

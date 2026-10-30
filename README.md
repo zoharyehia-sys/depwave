@@ -219,6 +219,8 @@ depwave shadow 2f61664a3bd4...d0d3fed2d141: 1 failing test file NOT selected ✘
 > how much a selective run would have saved. Confidence comes from many runs where tests actually failed and were all
 > selected.
 
+- A result it can't read never counts as a pass. An unknown status leaves the file without a result, so the run is
+  `inconclusive`, and a malformed or truncated report is an error.
 - It reads Vitest and Jest JSON (`--reporter=json`, `jest --json`) and JUnit XML. Repeat `--results` for several
   runners.
 - This repository runs shadow mode on every CI build and uploads `depwave-shadow.json` as a record. Its first run found
