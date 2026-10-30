@@ -272,7 +272,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # depwave needs the merge base
-      - uses: zoharyehia-sys/depwave@2bee6bd1047d6c9899c9dc89c1e2b9c31aa64dcd # main on 2026-10-30
+      - uses: zoharyehia-sys/depwave@4598168e2b3a91cb6386bc9e982d04fac702d7e3 # main on 2026-10-30
         id: depwave
         continue-on-error: true # if the analysis fails, run everything below instead of nothing
       # … set up Node.js and install your dependencies here …
