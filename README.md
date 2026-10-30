@@ -18,18 +18,19 @@ selects the test.
 ## Quick start
 
 You need Node.js 22 or later, `git`, and a clone whose history contains the merge base of the revisions you compare.
-depwave isn't published to npm yet, so you build it from source.
+
+> [!WARNING]
+> **depwave is in alpha.** Keep running your full test suite and use [shadow mode](#shadow-mode) to see what depwave
+> would have skipped. Don't skip tests based on it yet.
 
 **1. Install**
 
 ```bash
-git clone https://github.com/zoharyehia-sys/depwave.git
-cd depwave
-corepack enable          # provides the pinned pnpm 9
-pnpm install --frozen-lockfile
-pnpm build
-alias depwave="node '$PWD/packages/cli/dist/bin.js'"
+npm install --global depwave@alpha
 ```
+
+The install has no build step: SQLite comes prebuilt for Linux, macOS and Windows (x64 and arm64), and the parser is
+WebAssembly. To build from source instead, see [Contributing](CONTRIBUTING.md#setup).
 
 **2. Analyze a diff.** From the root of any git repository:
 
@@ -37,8 +38,8 @@ alias depwave="node '$PWD/packages/cli/dist/bin.js'"
 depwave impact --base origin/main
 ```
 
-Here it is on a six-test demo monorepo where one shared function changed. You can create the same repository with
-`node scripts/demo/make-demo.mjs`.
+Here it is on a six-test demo monorepo where one shared function changed. You can create the same repository from a
+clone of this one with `node scripts/demo/make-demo.mjs`.
 
 ```console
 $ depwave impact --base main
@@ -301,8 +302,8 @@ in each case, shadow mode in CI, and other CI systems.
 | Workspaces | pnpm, npm and Yarn workspaces, Nx `project.json`, single-package repositories | |
 | Lockfiles | pnpm v6 and v9, npm v2 and v3, Yarn Berry | Yarn classic, Bun, npm v1: every test is selected |
 | Test runners | Any runner that accepts file paths. Shadow mode reads Vitest/Jest JSON and JUnit XML | |
-| Runtime | Node.js 22+ with git. CI runs on Ubuntu and Windows, including a checkout path with spaces and non-ASCII characters | macOS isn't tested in CI |
-| Distribution | Source build, GitHub Action | npm package, release tags |
+| Runtime | Node.js 22+ with git. CI runs on Ubuntu, Windows and macOS, including a checkout path with spaces and non-ASCII characters, and installs the packed npm package on each | |
+| Distribution | npm (`depwave@alpha`), GitHub Action, source build | Stable releases |
 
 Beyond test selection, `depwave cycles` lints for import cycles and `depwave graph` draws the dependency graph as
 Mermaid or Graphviz ([CLI reference](docs/cli.md)). Planned but not built yet: type-aware method binding, plugins
