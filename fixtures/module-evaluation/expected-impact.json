@@ -107,6 +107,104 @@
           "impactedTests": []
         }
       }
+    },
+    {
+      "name": "class-static-block-change",
+      "description": "A static block runs while the class is defined, so everything that loads the file depends on it, even without using the class.",
+      "changes": [
+        {
+          "op": "modify",
+          "path": "src/statics.ts",
+          "find": "register('static-block');",
+          "replace": "register('static-block-v2');"
+        }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "src/statics.test.ts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "class-static-initializer-change",
+      "description": "An effectful static field initializer runs while the class is defined.",
+      "changes": [
+        {
+          "op": "modify",
+          "path": "src/statics.ts",
+          "find": "register('static-field')",
+          "replace": "register('static-field-v2')"
+        }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "src/statics.test.ts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "decorator-above-export-change",
+      "description": "A decorator written above `export` sits outside the class declaration. It still runs when the class is defined.",
+      "changes": [
+        {
+          "op": "modify",
+          "path": "src/decorated.ts",
+          "find": "@tracked('decorated')",
+          "replace": "@tracked('decorated-v2')"
+        }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "src/decorated.test.ts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "method-decorator-change",
+      "description": "A method decorator runs when the class is defined, not when the method is called.",
+      "changes": [
+        {
+          "op": "modify",
+          "path": "src/decorated.ts",
+          "find": "@tracked('method')",
+          "replace": "@tracked('method-v2')"
+        }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "src/decorated.test.ts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "method-body-of-a-class-with-load-time-code",
+      "description": "Only the static code and decorators run on load: a method body changing keeps symbol-level precision.",
+      "changes": [
+        {
+          "op": "modify",
+          "path": "src/statics.ts",
+          "find": "return 'ran';",
+          "replace": "return 'ran again';"
+        }
+      ],
+      "expected": {
+        "file": {
+          "impactedTests": [
+            "src/statics.test.ts"
+          ]
+        },
+        "symbol": {
+          "impactedTests": []
+        }
+      }
     }
   ]
 }

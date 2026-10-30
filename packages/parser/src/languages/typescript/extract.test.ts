@@ -355,6 +355,51 @@ describe('module side effects', () => {
     );
     expect(f.symbols.filter((s) => s.effectful).map((s) => s.name).sort()).toEqual(['a', 'b', 'default', 'handler']);
   });
+
+  it('gives code that runs while a class is defined a symbol of its own, separate from the methods', () => {
+    const load = (source: string) => facts(source).symbols.find((s) => s.name === 'A.<load>');
+    const plain = load('class A { static limit = 5; size = make(); m(a = make()) { return make(); } }');
+    expect(plain).toBeUndefined();
+
+    const code = [
+      "@dec('a') export class A {",
+      '  static handler = make();',
+      '  @log() m() { return 1; }',
+      '  n(@inject() a) {}',
+      '  [key()]() {}',
+      '  static { boot(); }',
+      '}',
+    ];
+    const symbol = load(code.join('\n'));
+    expect(symbol).toMatchObject({ parent: 'A', effectful: true });
+
+    // Each of these runs on load, so each one changes the symbol; a method body doesn't.
+    const edits: Array<[string, string]> = [
+      ["@dec('a')", "@dec('b')"],
+      ['handler = make()', 'handler = remake()'],
+      ['@log()', '@trace()'],
+      ['@inject()', '@provide()'],
+      ['key()', 'other()'],
+      ['boot()', 'reboot()'],
+    ];
+    for (const [find, replace] of edits) {
+      expect(load(code.join('\n').replace(find, replace))?.bodyHash, find).not.toBe(symbol?.bodyHash);
+    }
+    expect(load(code.join('\n').replace('return 1', 'return 2'))?.bodyHash).toBe(symbol?.bodyHash);
+  });
+
+  it('records references in load-time code as coming from `Class.<load>`', () => {
+    const f = facts(["import { boot, log, run } from './x';", '@log export class A {', '  static { boot(); }', '  m() { run(); }', '}'].join('\n'));
+    const from = (to: string) => f.references.filter((r) => r.to === to).map((r) => r.from);
+    expect(from('log')).toEqual(['A.<load>']);
+    expect(from('boot')).toEqual(['A.<load>']);
+    expect(from('run')).toEqual(['A.m']);
+  });
+
+  it('treats a class expression with load-time code as an effectful initializer', () => {
+    const f = facts(['const A = class { static { boot(); } };', 'const B = class { m() { boot(); } };'].join('\n'));
+    expect(f.symbols.filter((s) => s.effectful).map((s) => s.name)).toEqual(['A']);
+  });
 });
 
 describe('robustness', () => {

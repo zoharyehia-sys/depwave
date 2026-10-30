@@ -178,8 +178,6 @@ These can cause a missed test. Know them before you skip tests based on depwave'
 - **Runtime wiring.** Dependency-injection containers, string-based plugin loading, reflection, and framework
   conventions such as file-system routing. Apart from the `*eslint*` and `*prettier*` lockfile rule, depwave doesn't
   detect a package loaded by name.
-- **Class-level load-time code.** Static blocks, static field initializers and decorators run when a module loads, but
-  a change there reaches only the class's users, not everything that loads the module.
 - **Files read across packages.** A test that reads another package's files by path, without importing anything from
   that package.
 - **Other languages.** Only TypeScript and JavaScript are parsed. Other files are treated as data files.
