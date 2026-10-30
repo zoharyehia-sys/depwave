@@ -305,8 +305,9 @@ in each case, shadow mode in CI, and other CI systems.
 | Distribution | Source build, GitHub Action | npm package, release tags |
 
 Beyond test selection, `depwave cycles` lints for import cycles and `depwave graph` draws the dependency graph as
-Mermaid or Graphviz ([CLI reference](docs/cli.md)). Planned but not built yet: type-aware method binding, and plugins
-for framework conventions. See the [roadmap](ARCHITECTURE.md#5-implementation-roadmap).
+Mermaid or Graphviz ([CLI reference](docs/cli.md)). Planned but not built yet: type-aware method binding, plugins
+for framework conventions, aggregated shadow evidence, and `depwave doctor`. See the
+[roadmap](ARCHITECTURE.md#5-implementation-roadmap).
 
 ## Documentation
 

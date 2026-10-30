@@ -570,6 +570,29 @@ checkout.test.ts
 - ✅ Safety valves: a `[depwave:all]` commit-message override, and a full run outside pull requests, so a nightly `schedule` runs everything (this repo's CI does).
 - ✅ **Exit:** used on its own repo plus one real OSS monorepo, with a published benchmark in the README.
 
+### Phase 5: Evidence from shadow mode
+Shadow mode reports on one run. Before anyone turns on enforced selection, it needs to say what many runs add up to, and it must never read an unclear result as a good one.
+
+- ✅ **Unknown results are never a pass.** Statuses are checked against what Jest and Vitest document. An unknown one leaves the file without a result, so the run is `inconclusive`.
+- ✅ **A real XML parser for JUnit** (`saxes`). Comments, CDATA and namespaces no longer change the result, a failure on a suite itself counts (a file that doesn't load has no testcase), and a malformed report is an error.
+- **Say what a verdict rests on.** `compareShadow()` skips the completeness check when `plan.runAll` is true. Nothing can be missed if everything was selected, but "everything was selected" and "every test ran" aren't the same thing, so the report should keep them apart. Consider renaming the user-facing `sound` to `no miss observed`, which is harder to misread. The name is part of the Action's outputs, so that's a breaking change.
+- **`depwave shadow history --input <dir>`.** Aggregates the `depwave-shadow.json` files CI already uploads: observed failure recall (caught failures ÷ all observed failures), how many failures were observed, average test reduction, how many runs were incomplete, and missed failures by category (unresolved dependency, framework convention, test discovery, flaky test).
+- **Recall needs a sample size.** 100% over three failures is weak evidence. Report a confidence interval and require a minimum sample before recommending enforced selection: showing recall of at least 99.9% at 95% confidence takes about 3,000 observed failures with no miss, so the Phase 4 target needs this number next to it.
+
+### Phase 6: Utilities that serve the workflow
+Each one has to help people understand dependencies or run the right tests. depwave isn't a general developer toolbox.
+
+1. **`depwave doctor [--format json]`.** Says whether this repository can be analyzed safely: git and merge base, workspace detection, unresolved and dynamic imports, test runner and test files, cache health, and an overall verdict on whether selective runs are advisable.
+2. **`depwave tests --base <ref> --runner vitest|jest|playwright`.** Turns a selection into arguments for the runner (this is Phase 4's runner adapters). It generates structured arguments first, and doesn't execute shell commands. Cypress, Mocha and Pytest later, Pytest after Python analysis.
+3. **`depwave trace <importer> <specifier>`.** A resolver debugger: the importer, every candidate tried, the target, the strategy that found it, and why a conditional export or a missing path changed the answer. `ResolutionResult` already has `probed` and `also`.
+4. **`depwave cache prune|verify|inspect`.** Makes cache problems diagnosable, particularly in CI and on Windows.
+5. **Historical risk ordering.** Use test duration and failure history to order impacted tests. Like co-change mining in Phase 3, this may change the order, never the set: history must not remove a test.
+
+### Later
+- From Phase 3: interactive HTML graph explorer, framework plugins (Next.js routes, NestJS DI, Storybook stories), Python analysis, and `depwave watch`, once incremental graph updates exist.
+- More package managers: Bun lockfiles and Yarn Classic.
+- Every new language or package manager gets its own fixtures and soundness tests.
+
 ---
 
 ## 6. Testing Strategy
