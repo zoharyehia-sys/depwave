@@ -3,7 +3,10 @@ name: README example
 # The selective-run workflow from docs/github-action.md, run for real so the documented example can't rot. Keep the
 # depwave steps identical to the doc; only the setup steps (this repo's pnpm install) and `comment: 'false'` differ
 # (depwave-pr.yml already posts the comment).
-on: pull_request
+on:
+  pull_request:
+  schedule:
+    - cron: '47 3 * * *' # the nightly full run from the doc's Safety valves section
 
 permissions:
   contents: read
@@ -16,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # depwave needs the merge base
-      - uses: zoharyehia-sys/depwave@50bbe08838dd696603fdb9790742352221eaacf5 # main on 2026-10-29
+      - uses: zoharyehia-sys/depwave@2bee6bd1047d6c9899c9dc89c1e2b9c31aa64dcd # main on 2026-10-30
         id: depwave
         continue-on-error: true # if the analysis fails, run everything below instead of nothing
         with:
