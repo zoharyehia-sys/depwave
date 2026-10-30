@@ -2,6 +2,7 @@ import { existsSync, realpathSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { toPosixPath, type ShadowRun, type TestFileOutcome } from '@depwave/core';
+import { SaxesParser } from 'saxes';
 
 /** A result before its path is mapped into the repo: exactly what the runner wrote. */
 export interface RawOutcome {
@@ -18,7 +19,7 @@ export interface RawResults {
 export function parseTestResults(content: string, source = 'test results'): RawResults {
   const text = content.replace(/^﻿/, '').trimStart();
   if (text.startsWith('{')) return parseJestJson(text, source);
-  if (text.startsWith('<')) return parseJUnit(text);
+  if (text.startsWith('<')) return parseJUnit(text, source);
   throw new Error(`${source}: not a Vitest/Jest JSON report or JUnit XML file`);
 }
 
@@ -42,67 +43,105 @@ function parseJestJson(text: string, source: string): RawResults {
   let unattributedFailures = 0;
   for (const file of data.testResults) {
     const status = jestStatus(file);
-    if (typeof file.name === 'string' && file.name !== '') outcomes.push({ file: file.name, status });
-    else if (status === 'failed') unattributedFailures++;
+    if (typeof file.name === 'string' && file.name !== '') {
+      if (status) outcomes.push({ file: file.name, status });
+    } else if (status === 'failed' || status === undefined) {
+      unattributedFailures++;
+    }
   }
   return { outcomes, unattributedFailures };
 }
 
-function jestStatus(file: JestFileResult): TestFileOutcome['status'] {
+const FILE_STATUSES = new Set<unknown>(['passed', 'failed', 'skipped', 'pending']);
+const ASSERTION_STATUSES = new Set<unknown>(['passed', 'failed', 'skipped', 'pending', 'todo', 'disabled', 'focused']);
+
+/**
+ * undefined: a result this code can't read. The file then has no result, which makes the run inconclusive; defaulting
+ * to `passed` would let a new or broken status read as a success.
+ */
+function jestStatus(file: JestFileResult): TestFileOutcome['status'] | undefined {
   const assertions = (file.assertionResults ?? []).map((a) => a.status);
   // A file that fails to load has status "failed" and no assertions at all.
   if (file.status === 'failed' || assertions.includes('failed')) return 'failed';
+  if (!assertions.every((s) => ASSERTION_STATUSES.has(s))) return undefined;
+  if (file.status === undefined ? assertions.length === 0 : !FILE_STATUSES.has(file.status)) return undefined;
   if (assertions.length > 0 && assertions.every((s) => s === 'skipped' || s === 'pending' || s === 'todo' || s === 'disabled')) return 'skipped';
   return file.status === 'skipped' || file.status === 'pending' ? 'skipped' : 'passed';
 }
 
-const TAG = /<(\/?)(testsuite|testcase|failure|error|skipped)\b((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>/g;
-const ATTR = /([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
 const PATH_LIKE = /[\\/]|\.(?:[cm]?[jt]sx?|py)$/;
+
+/** An open `<testsuite>` (or `<testsuites>`): what it says failed, and how much of that its children explain. */
+interface JUnitSuite {
+  attrs: Record<string, string>;
+  /** `<failure>` / `<error>` elements seen inside it, nested suites included. */
+  reported: number;
+  /** A `<failure>` / `<error>` directly on the suite, outside any testcase. */
+  ownFailure: boolean;
+}
 
 /**
  * JUnit has no standard "file" field, so the file comes from (in order): testcase `file`, testsuite `file` or
  * `filepath`, then a path-like testcase `classname` or testsuite `name` (what Vitest writes). Failures that map to
  * no file are counted, never guessed.
+ *
+ * A suite can fail with no testcase to show for it (a file that doesn't load): a failure element on the suite, or
+ * `failures` + `errors` counts its children don't add up to. That's one failure of the suite itself.
  */
-function parseJUnit(text: string): RawResults {
+function parseJUnit(text: string, source: string): RawResults {
   const outcomes: RawOutcome[] = [];
   let unattributedFailures = 0;
-  const suites: Array<Record<string, string>> = [];
+  const suites: JUnitSuite[] = [];
   let testcase: { file: string | undefined; status: TestFileOutcome['status'] } | undefined;
 
-  const finish = () => {
+  const finishTestcase = () => {
     if (!testcase) return;
     if (testcase.file !== undefined) outcomes.push({ file: testcase.file, status: testcase.status });
     else if (testcase.status === 'failed') unattributedFailures++;
     testcase = undefined;
   };
-
-  for (const [, closing, tag, rawAttrs, selfClosing] of text.matchAll(TAG)) {
-    const attrs = attributes(rawAttrs ?? '');
-    if (tag === 'testsuite') {
-      if (closing) suites.pop();
-      else if (!selfClosing) suites.push(attrs);
-    } else if (tag === 'testcase') {
-      if (closing) {
-        finish();
-        continue;
-      }
-      finish();
-      const suite = suites.at(-1) ?? {};
-      testcase = { file: junitFile(attrs, suite), status: 'passed' };
-      if (selfClosing) finish();
-    } else if (!closing && testcase) {
-      if (tag === 'skipped') {
-        if (testcase.status === 'passed') testcase.status = 'skipped';
-      } else {
-        testcase.status = 'failed';
-      }
+  const finishSuite = () => {
+    const suite = suites.pop()!;
+    const declared = (Number(suite.attrs.failures) || 0) + (Number(suite.attrs.errors) || 0);
+    if (suite.ownFailure || declared > suite.reported) {
+      const file = junitFile({}, suite.attrs);
+      if (file !== undefined) outcomes.push({ file, status: 'failed' });
+      else unattributedFailures++;
     }
-  }
-  finish();
+    const parent = suites.at(-1);
+    if (parent) parent.reported += Math.max(declared, suite.reported);
+  };
+
+  // Strict: a truncated or malformed report is an error, not a partial result. saxes never expands a DTD's entities.
+  const parser = new SaxesParser();
+  parser.on('error', (error) => {
+    throw new Error(`${source}: invalid XML (${error.message})`);
+  });
+  parser.on('opentag', (tag) => {
+    const name = localName(tag.name);
+    if (name === 'testsuite' || name === 'testsuites') {
+      suites.push({ attrs: tag.attributes, reported: 0, ownFailure: false });
+    } else if (name === 'testcase') {
+      testcase = { file: junitFile(tag.attributes, suites.at(-1)?.attrs ?? {}), status: 'passed' };
+    } else if (name === 'failure' || name === 'error') {
+      const suite = suites.at(-1);
+      if (suite) suite.reported++;
+      if (testcase) testcase.status = 'failed';
+      else if (suite) suite.ownFailure = true;
+    } else if (name === 'skipped' && testcase?.status === 'passed') {
+      testcase.status = 'skipped';
+    }
+  });
+  parser.on('closetag', (tag) => {
+    const name = localName(tag.name);
+    if (name === 'testcase') finishTestcase();
+    else if (name === 'testsuite' || name === 'testsuites') finishSuite();
+  });
+  parser.write(text).close();
   return { outcomes, unattributedFailures };
 }
+
+const localName = (name: string): string => name.slice(name.indexOf(':') + 1);
 
 function junitFile(testcase: Record<string, string>, suite: Record<string, string>): string | undefined {
   const explicit = testcase.file ?? suite.file ?? suite.filepath;
@@ -110,19 +149,6 @@ function junitFile(testcase: Record<string, string>, suite: Record<string, strin
   for (const candidate of [testcase.classname, suite.name]) if (candidate && PATH_LIKE.test(candidate)) return candidate;
   return undefined;
 }
-
-function attributes(raw: string): Record<string, string> {
-  const attrs: Record<string, string> = {};
-  for (const [, name, double, single] of raw.matchAll(ATTR)) attrs[name!] = decodeXml(double ?? single ?? '');
-  return attrs;
-}
-
-const decodeXml = (text: string): string =>
-  text.replace(/&(#x[0-9a-f]+|#\d+|lt|gt|amp|quot|apos);/gi, (_, entity: string) => {
-    const named: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
-    if (entity[0] !== '#') return named[entity.toLowerCase()]!;
-    return String.fromCodePoint(entity[1]?.toLowerCase() === 'x' ? parseInt(entity.slice(2), 16) : parseInt(entity.slice(1), 10));
-  });
 
 /**
  * Maps runner paths into the repo: absolute paths as-is, relative ones against `resultsRoot` (where the runner ran).
