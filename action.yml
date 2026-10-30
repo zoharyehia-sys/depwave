@@ -48,7 +48,7 @@ outputs:
     description: Number of test files in the head revision.
     value: ${{ steps.analyze.outputs.total-tests }}
   run-all:
-    description: '`true` when a global trigger (lockfile, root config) selected every test.'
+    description: '`true` when a global trigger (lockfile, root config) or `[depwave:all]` selected every test, or outside a pull request with no `base` input.'
     value: ${{ steps.analyze.outputs.run-all }}
   tests:
     description: Impacted test files, space-separated, for passing to a test runner.
@@ -131,15 +131,13 @@ runs:
             console.log(`shadow-missed=${shadow.missed.join(" ")}`);
           ' "$SHADOW_JSON" >> "$GITHUB_OUTPUT"
         fi
+        FULL_RUN=false
+        if [ -z "$INPUT_BASE" ] && [ -z "$BASE_REF" ]; then
+          FULL_RUN=true
+          echo "Not a pull request and no \`base\` input: nothing to compare against, so \`run-all\` is true." >> "$GITHUB_STEP_SUMMARY"
+        fi
         cat "$MD" >> "$GITHUB_STEP_SUMMARY"
-        node -e '
-          const { plan } = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-          const tests = plan.groups.flatMap((g) => g.tests);
-          console.log(`impacted-tests=${tests.length}`);
-          console.log(`total-tests=${plan.totalTests ?? ""}`);
-          console.log(`run-all=${plan.runAll}`);
-          console.log(`tests=${tests.join(" ")}`);
-        ' "$JSON" >> "$GITHUB_OUTPUT"
+        FULL_RUN="$FULL_RUN" node "$GITHUB_ACTION_PATH/action/plan-outputs.mjs" "$JSON" >> "$GITHUB_OUTPUT"
         echo "report=$JSON" >> "$GITHUB_OUTPUT"
         echo "markdown=$MD" >> "$GITHUB_OUTPUT"
 

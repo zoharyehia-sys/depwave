@@ -103,6 +103,23 @@ describe('GitService (against a real repo)', () => {
     expect(error.stderr).toContain('Stopping at filesystem boundary');
   });
 
+  it('lists the commit messages of a range, whole and newest first; WORKTREE counts as HEAD', async () => {
+    const other = new TempRepo();
+    other.write('a.txt', '1\n');
+    const first = other.commit('first');
+    other.write('a.txt', '2\n');
+    const second = other.commit('subject\n\nbody line\n\nלו"ז');
+    other.write('a.txt', '3\n');
+    const third = other.commit('third');
+    const git = new GitService(other.dir);
+    const messages = await git.commitMessages(first, third);
+    expect(messages.map((c) => c.sha)).toEqual([third, second]);
+    expect(messages[1]?.message.trim()).toBe('subject\n\nbody line\n\nלו"ז');
+    expect(await git.commitMessages(first, WORKTREE)).toEqual(messages);
+    expect(await git.commitMessages(third, third)).toEqual([]);
+    other.dispose();
+  });
+
   it('resolves refs to full commit SHAs and leaves WORKTREE alone', async () => {
     expect(await service.resolveRevision('main')).toMatch(/^[0-9a-f]{40}$/);
     expect(await service.resolveRevision(c1.slice(0, 8))).toBe(c1);

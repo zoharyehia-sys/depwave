@@ -1,4 +1,4 @@
-import type { FileChange, Hunk } from '../model/changes.js';
+import type { CommitMessage, FileChange, Hunk } from '../model/changes.js';
 
 /** Pseudo-revision for uncommitted working-tree state. */
 export const WORKTREE = 'WORKTREE';
@@ -23,6 +23,8 @@ export interface GitPort {
    * Untracked files yield no hunks: callers treat added files as wholly changed.
    */
   hunks(base: Revision, head: Revision, path: string, oldPath?: string): Promise<Hunk[]>;
+  /** Commits in `base..head`, newest first. WORKTREE counts as HEAD: uncommitted work has no message. */
+  commitMessages(base: Revision, head: Revision): Promise<CommitMessage[]>;
   /** Blob oids at a revision. For WORKTREE, dirty and untracked files are hashed so oids match their current content. */
   listTracked(rev: Revision): Promise<TrackedFile[]>;
   readBlob(rev: Revision, path: string): Promise<string>;

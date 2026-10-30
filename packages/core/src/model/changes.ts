@@ -21,11 +21,16 @@ export interface Hunk {
 }
 
 /**
- * ci-config / custom (workspace config): everything. tsconfig: everything under its directory.
+ * ci-config / custom (workspace config) / commit-message (`[depwave:all]`): everything. tsconfig: everything under its directory.
  * package-manifest: a package and its dependents. data-file: the tests of one package, which may read the file at runtime.
  * lockfile: the packages whose resolved dependencies changed, and their dependents (everything when that can't be told).
  */
-export type GlobalTriggerKind = 'lockfile' | 'tsconfig' | 'package-manifest' | 'ci-config' | 'data-file' | 'custom';
+export type GlobalTriggerKind = 'lockfile' | 'tsconfig' | 'package-manifest' | 'ci-config' | 'data-file' | 'custom' | 'commit-message';
+
+export interface CommitMessage {
+  sha: string;
+  message: string;
+}
 
 export interface GlobalTrigger {
   kind: GlobalTriggerKind;

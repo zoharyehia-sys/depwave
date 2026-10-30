@@ -5,6 +5,7 @@ import { COMMENT_MARKER } from '@depwave/reporters';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseDocument } from 'yaml';
+import { planOutputs } from '../action/plan-outputs.mjs';
 import { findStickyComment, fitBody, MARKER, MAX_BODY } from '../action/post-comment.mjs';
 
 describe('post-comment', () => {
@@ -60,12 +61,33 @@ describe('YAML files GitHub reads', () => {
   });
 });
 
+describe('plan-outputs', () => {
+  const plan = { runAll: false, totalTests: 5, groups: [{ tests: ['a.test.ts'] }, { tests: ['b.test.ts'] }] };
+
+  it('reports the selection on a pull request', () => {
+    expect(planOutputs(plan, false)).toEqual(['impacted-tests=2', 'total-tests=5', 'run-all=false', 'tests=a.test.ts b.test.ts']);
+  });
+
+  it('a run with nothing to compare against runs everything, even though its diff selected nothing', () => {
+    expect(planOutputs({ runAll: false, groups: [] }, true)).toContain('run-all=true');
+  });
+
+  it('keeps a global trigger on a pull request', () => {
+    expect(planOutputs({ ...plan, runAll: true }, false)).toContain('run-all=true');
+  });
+});
+
 describe('action.yml', () => {
   const action = readFileSync(new URL('../action.yml', import.meta.url), 'utf8');
 
   it('runs the built CLI with markdown output and posts it through post-comment.mjs', () => {
     expect(action).toContain('--format markdown --explain "$INPUT_EXPLAIN"');
     expect(action).toContain('node "$GITHUB_ACTION_PATH/action/post-comment.mjs" "$REPORT_MD"');
+  });
+
+  it('calls it a full run only without a base input and outside a pull request', () => {
+    expect(action).toContain('if [ -z "$INPUT_BASE" ] && [ -z "$BASE_REF" ]; then');
+    expect(action).toContain('FULL_RUN="$FULL_RUN" node "$GITHUB_ACTION_PATH/action/plan-outputs.mjs" "$JSON" >> "$GITHUB_OUTPUT"');
   });
 
   it('restores the analysis cache before analyzing and saves it after, under one per-commit key', () => {

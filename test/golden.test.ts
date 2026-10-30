@@ -262,6 +262,27 @@ describe('impact --format markdown (end to end)', () => {
   });
 });
 
+describe('[depwave:all] override (end to end)', () => {
+  const basic = fixtures.find((f) => f.name === 'pnpm-basic')!;
+  const leaf = basic.spec.scenarios.find((s) => s.name === 'unrelated-app-change')!;
+
+  it.each(['chore: risky refactor [depwave:all]', 'fix: thing\n\nDetails.\n\n[DEPWAVE:ALL]'])('a commit message selects every test: %j', async (message) => {
+    const { repo, base } = scenarioRepo(basic, leaf);
+    repo.write('README.md', 'touched\n');
+    const head = repo.commit(message);
+    const { plan, report } = await (await createPipeline(repo.dir)).impact({ base, head });
+    expect(plan.runAll).toBe(true);
+    expect(report.globalTriggers).toEqual([{ kind: 'commit-message', path: `commit ${head.slice(0, 12)}`, detail: 'its message says [depwave:all]' }]);
+  });
+
+  it('a normal commit message changes nothing', async () => {
+    const { repo, base, head } = scenarioRepo(basic, leaf);
+    const { plan, report } = await (await createPipeline(repo.dir)).impact({ base, head });
+    expect(plan.runAll).toBe(false);
+    expect(report.globalTriggers).toEqual([]);
+  });
+});
+
 describe('soundness regressions (end to end)', () => {
   /** Base commit from `files`, head commit with `changes` applied; returns the selected test files. */
   async function selected(files: Record<string, string>, changes: Record<string, string>): Promise<string[]> {

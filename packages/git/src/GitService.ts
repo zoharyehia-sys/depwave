@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { WORKTREE, type FileChange, type GitPort, type Hunk, type Revision, type TrackedFile } from '@depwave/core';
+import { WORKTREE, type CommitMessage, type FileChange, type GitPort, type Hunk, type Revision, type TrackedFile } from '@depwave/core';
 import { parseCatFileBatch, parseHunks, parseLsFilesStaged, parseLsTree, parsePathList, parseRawDiff } from './parse.js';
 
 export class GitError extends Error {
@@ -103,6 +103,15 @@ export class GitService implements GitPort {
     const range = head === WORKTREE ? [base] : [base, head];
     const paths = oldPath === undefined ? [path] : [oldPath, path];
     return parseHunks(await this.git(['diff', '-U0', ...DIFF_FLAGS, ...range, '--', ...paths]));
+  }
+
+  async commitMessages(base: Revision, head: Revision): Promise<CommitMessage[]> {
+    assertCommit(base, 'base');
+    const output = await this.git(['log', '--format=%H%x00%B%x00', `${base}..${head === WORKTREE ? 'HEAD' : head}`, '--']);
+    const fields = output.split('\0');
+    const commits: CommitMessage[] = [];
+    for (let i = 0; i + 1 < fields.length; i += 2) commits.push({ sha: fields[i]!.trim(), message: fields[i + 1]! });
+    return commits;
   }
 
   async listTracked(rev: Revision): Promise<TrackedFile[]> {

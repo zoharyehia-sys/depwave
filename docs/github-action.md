@@ -41,7 +41,8 @@ This exact workflow, with this repository's own setup steps filled in, runs on e
 | depwave says | Steps that run |
 |---|---|
 | Some tests are impacted | *Run impacted tests*, with just those files |
-| A global trigger fired (`run-all` is `true`) | *Run all tests* |
+| A global trigger fired, or a commit says `[depwave:all]` (`run-all` is `true`) | *Run all tests* |
+| Not a pull request, and no `base` input (`run-all` is `true`) | *Run all tests* |
 | No tests are impacted | Neither: nothing the change can reach has a test |
 | The analysis failed (no merge base, broken manifest, …) | *Run all tests*. The depwave step shows as failed, but the job continues |
 
@@ -60,6 +61,28 @@ so the code your CI runs could change without you knowing. Update the SHA delibe
   has the report.
 - `fetch-depth: 0` matters: without the merge base, the action fails with
   `depwave: base 'origin/main' not found. Check out with 'fetch-depth: 0' so the merge base is available.`
+
+## Safety valves
+
+Two ways to run everything, for when you don't want to rely on the selection.
+
+**`[depwave:all]` in a commit message.** Any commit in the pull request whose message contains it (in any case) selects
+every test. Use it for a change you know depwave can't see, like a runtime-wired plugin. A pull request can set it
+freely: it only ever adds tests. The report names the commit.
+
+**A nightly full run.** Selection only looks at what changed, so a full run on a schedule catches anything it missed.
+Add a schedule to the workflow above:
+
+```yaml
+on:
+  pull_request:
+  schedule:
+    - cron: '0 3 * * *'
+```
+
+Outside a pull request, with no `base` input, there's nothing to compare against, so `run-all` is `true` and *Run all
+tests* runs. The same goes for `push` and `workflow_dispatch`. GitHub pauses schedules in a repository with no activity
+for 60 days.
 
 ## Caching
 
@@ -109,7 +132,7 @@ a week.
 |---|---|
 | `impacted-tests` | Number of impacted test files |
 | `total-tests` | Number of test files at head |
-| `run-all` | `true` when a global trigger selected every test |
+| `run-all` | `true` when a global trigger or `[depwave:all]` selected every test, or outside a pull request with no `base` input |
 | `tests` | Impacted test files, separated by spaces |
 | `report` | Path to the full JSON report |
 | `shadow-verdict` | With `test-results`: `sound`, `missed` or `inconclusive` |

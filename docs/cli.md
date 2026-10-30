@@ -59,7 +59,7 @@ depwave graph --level file --package @acme/ui --format dot | dot -Tsvg > ui.svg
 
 `depwave impact --format json` prints `{ "report": …, "plan": … }`:
 
-- `plan`: `runAll` (a global trigger selected every test), `totalTests`, and `groups` of
+- `plan`: `runAll` (a global trigger or a `[depwave:all]` commit message selected every test), `totalTests`, and `groups` of
   `{ packageName, runner, tests }`, where `runner` is `vitest`, `jest` or `unknown`, taken from the package's
   dependencies or the root's.
 - `report`: `base`, `head`, `granularity`, `changedFiles`, `seeds`, `globalTriggers`, every `impacted` node with its
