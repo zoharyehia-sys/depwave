@@ -9,7 +9,7 @@ import type { ResolverPort } from '../ports/resolver.js';
 import { ReExportResolver } from './ReExportResolver.js';
 
 /** Bump whenever linking output can change for the same inputs: it's part of every snapshot cache key. */
-export const GRAPH_VERSION = 7;
+export const GRAPH_VERSION = 8;
 
 /** Modules that start processes or workers: a test using them can execute any file of its package. */
 const SPAWN_MODULES = new Set([

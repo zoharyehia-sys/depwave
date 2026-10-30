@@ -18,9 +18,12 @@ export type ExtractedFacts = Omit<FileFacts, 'contentHash' | 'parserVersion'>;
 
 /** Enclosing-symbol name for top-level code. */
 export const MODULE = '<module>';
+/** Member holding the code in a class that runs while the class is defined: `Class.<load>`. */
+export const LOAD = '<load>';
 
 const FUNCTION_LIKE = new Set(['arrow_function', 'function_expression', 'function', 'generator_function']);
 const CLASS_LIKE = new Set(['class_declaration', 'abstract_class_declaration', 'class']);
+const CLASS_FIELDS = new Set(['public_field_definition', 'field_definition']);
 const TYPE_ONLY_DECLARATIONS = new Set(['interface_declaration', 'type_alias_declaration']);
 /** Expressions that run code when a module is evaluated (function bodies excluded). */
 const EFFECTFUL = new Set(['call_expression', 'new_expression', 'await_expression', 'assignment_expression', 'augmented_assignment_expression', 'update_expression']);
@@ -66,6 +69,8 @@ class Extractor {
   /** Every name bound at module scope: imports + top-level declarations. References are only recorded to these. */
   private readonly bound = new Set<string>();
   private readonly bodies: Body[] = [];
+  /** Nodes of `Class.<load>`: references inside them come from there, not from the class. */
+  private readonly loadTimeNodes = new Set<number>();
   /** `export { a }` may precede `const a`: applied after pass 1. */
   private readonly pendingExports: Array<[local: string, as: true | 'default']> = [];
 
@@ -212,9 +217,9 @@ class Extractor {
     const kind: SymbolKind = FUNCTION_LIKE.has(value.type) ? this.functionKind(name) : CLASS_LIKE.has(value.type) ? 'class' : 'variable';
     this.addSymbol(name, kind, 'default', statement, value);
     this.exports.push({ kind: 'local', name: 'default', local: name, typeOnly: false });
-    if (CLASS_LIKE.has(value.type)) this.classMembers(value, name);
+    if (CLASS_LIKE.has(value.type)) this.classMembers(value, name, statement);
     this.bodies.push({ node: value, from: name, ...(CLASS_LIKE.has(value.type) ? { cls: name } : {}) });
-    if (hasModuleEffect(value)) this.markEffectful([name]);
+    if (!CLASS_LIKE.has(value.type) && hasModuleEffect(value)) this.markEffectful([name]);
   }
 
   /** `module.exports = …`, `module.exports.x = …`, `exports.x = …` */
@@ -255,7 +260,7 @@ class Extractor {
       case 'abstract_class_declaration': {
         const symbol = name ?? 'default';
         this.addSymbol(symbol, 'class', exported, outer, node);
-        this.classMembers(node, symbol);
+        this.classMembers(node, symbol, outer);
         this.bodies.push({ node, from: symbol, cls: symbol });
         return [symbol];
       }
@@ -309,13 +314,24 @@ class Extractor {
     return names;
   }
 
-  private classMembers(cls: Node, className: string): void {
+  private classMembers(cls: Node, className: string, outer: Node): void {
     const body = cls.childForFieldName('body');
     for (const member of body?.namedChildren ?? []) {
       if (member.type !== 'method_definition' && member.type !== 'abstract_method_signature' && member.type !== 'method_signature') continue;
       const name = member.childForFieldName('name')?.text;
       if (name) this.addSymbol(`${className}.${name}`, 'method', false, member, member, className);
     }
+    // Its own symbol, so a method body changing doesn't reach everything that loads the file, only this does.
+    // `@dec export class A`: the decorator hangs off the export statement, outside the class.
+    const outerDecorators = outer === cls ? [] : outer.namedChildren.filter((c) => c.type === 'decorator');
+    const code = [...outerDecorators, ...loadTimeCode(cls)];
+    if (code.length === 0) return;
+    const name = `${className}.${LOAD}`;
+    const symbol = this.addHashedSymbol(name, 'method', false, code[0]!, this.tokens.combinedHash(code), className);
+    symbol.effectful = true;
+    this.hasSideEffects = true;
+    for (const node of code) this.loadTimeNodes.add(node.id);
+    for (const node of outerDecorators) this.bodies.push({ node, from: name, cls: className });
   }
 
   private functionKind(name: string): SymbolKind {
@@ -329,8 +345,11 @@ class Extractor {
   }
 
   private addSymbol(name: string, kind: SymbolKind, exported: boolean | 'default', spanNode: Node, hashNode: Node, parent?: string): void {
+    this.addHashedSymbol(name, kind, exported, spanNode, this.tokens.hash(hashNode), parent);
+  }
+
+  private addHashedSymbol(name: string, kind: SymbolKind, exported: boolean | 'default', spanNode: Node, bodyHash: string, parent?: string): SymbolFact {
     const span = toSpan(spanNode);
-    const bodyHash = this.tokens.hash(hashNode);
     if (!parent) this.bound.add(name);
 
     // Overloads and declaration merging (interface + namespace) produce one symbol spanning all declarations.
@@ -344,11 +363,12 @@ class Extractor {
       };
       existing.bodyHash = `${existing.bodyHash}+${bodyHash}`;
       existing.exported = mergeExported(existing.exported, exported);
-      return;
+      return existing;
     }
     const symbol: SymbolFact = { name, kind, exported, span, bodyHash };
     if (parent) symbol.parent = parent;
     this.symbols.push(symbol);
+    return symbol;
   }
 
   private markExported(local: string, as: true | 'default'): void {
@@ -364,6 +384,7 @@ class Extractor {
   // ─── pass 2: references, dynamic imports, nested requires ────────────────────
 
   private walk(node: Node, from: string, cls?: string): void {
+    if (cls !== undefined && this.loadTimeNodes.has(node.id)) from = `${cls}.${LOAD}`;
     switch (node.type) {
       case 'comment':
       case 'jsx_closing_element': // repeats the opening tag's name; already recorded as jsx
@@ -668,10 +689,35 @@ function hasModuleEffect(node: Node): boolean {
   while (stack.length > 0) {
     const current = stack.pop()!;
     if (EFFECTFUL.has(current.type)) return true;
+    if (CLASS_LIKE.has(current.type) && loadTimeCode(current).length > 0) return true;
     if (FUNCTION_LIKE.has(current.type) || CLASS_LIKE.has(current.type)) continue;
     stack.push(...current.namedChildren);
   }
   return false;
+}
+
+/**
+ * The parts of a class that run when it's defined, not when it's used: decorators (on the class, its members and their
+ * parameters), static blocks, and static initializers, computed member names and `extends` expressions that run code.
+ */
+function loadTimeCode(cls: Node): Node[] {
+  const code: Node[] = [];
+  const visit = (node: Node): void => {
+    if (node.type === 'statement_block') return; // a method body: runs when called
+    if (node.type === 'decorator' || node.type === 'class_static_block') {
+      code.push(node);
+    } else if (node.type === 'computed_property_name' || node.type === 'class_heritage') {
+      if (hasModuleEffect(node)) code.push(node);
+    } else if (CLASS_FIELDS.has(node.type)) {
+      const value = node.childForFieldName('value');
+      if (value && hasToken(node, 'static') && hasModuleEffect(value)) code.push(value);
+      for (const child of node.namedChildren) if (child.id !== value?.id) visit(child); // its decorators, computed name
+    } else {
+      for (const child of node.namedChildren) visit(child);
+    }
+  };
+  for (const child of cls.namedChildren) visit(child);
+  return code;
 }
 
 export function countParseErrors(root: Node): number {

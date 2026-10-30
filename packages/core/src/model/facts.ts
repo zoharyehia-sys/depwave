@@ -64,7 +64,7 @@ export interface ExportFact {
 }
 
 export interface SymbolFact {
-  /** Top-level name, `Class.method` for members, or `default` for anonymous default exports. */
+  /** Top-level name, `Class.method` for members, `Class.<load>` for code run while the class is defined, or `default` for anonymous default exports. */
   name: string;
   kind: SymbolKind;
   exported: boolean | 'default';

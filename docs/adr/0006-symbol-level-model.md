@@ -54,8 +54,12 @@ git call per file, has line-range edge cases, and misreads moved code.
 - ✅ Symbol ⊆ file on every golden scenario. File level stays available (`--granularity file`).
 - ⚠️ Module-level edits (imports, top-level statements, effectful initializers) reach everything that loads the module,
   transitively, including through barrels: the barrel precision win holds for function and class bodies only.
-- ⚠️ Not yet covered: class static blocks, static field initializers and decorators also run on load, but a change there
-  seeds the class symbol, which reaches only the class's users.
+- ✅ Code that runs while a class is defined (decorators, static blocks, and static initializers, computed member names
+  and `extends` expressions that run code) gets its own effectful `Class.<load>` symbol, so it reaches everything that
+  loads the file, while a method body stays as narrow as before. `@dec export class A` needed this most: the decorator
+  sits on the export statement, so no hash covered it and an edit there selected nothing.
+- ⚠️ A class expression with load-time code (`const A = class { static { … } }`) has no `<load>` symbol: the whole
+  initializer counts as effectful, so its method bodies reach every loader too.
 - ⚠️ Known widening: using a class pulls in all its methods. Type-aware method binding (TS Compiler API precision mode)
   could narrow this later.
 - ⚠️ Unused named imports create no edge. A module whose *top-level side effects* change does reach importers that
