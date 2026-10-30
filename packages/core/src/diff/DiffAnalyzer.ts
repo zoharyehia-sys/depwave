@@ -1,5 +1,5 @@
 import { NO_PACKAGE, type DependencyGraph } from '../graph/DependencyGraph.js';
-import type { ChangeSet, FileChange, GlobalTrigger, LockfileDiff } from '../model/changes.js';
+import type { ChangeSet, CommitMessage, FileChange, GlobalTrigger, LockfileDiff } from '../model/changes.js';
 import type { FileFacts, SymbolFact } from '../model/facts.js';
 import { MODULE_SYMBOL, type Granularity } from '../model/graph.js';
 import { nodeId, type NodeId } from '../model/ids.js';
@@ -18,8 +18,12 @@ export interface DiffContext {
   headFacts?: ReadonlyMap<string, FileFacts>;
   /** Analyzed lockfile changes by path. A changed lockfile without an entry selects everything. */
   lockfiles?: ReadonlyMap<string, LockfileDiff>;
+  /** Commits in the analyzed range: a `[depwave:all]` in any message selects everything. */
+  commits?: readonly CommitMessage[];
 }
 
+/** The escape hatch: only ever adds tests, so it's safe for a pull request to set it. */
+const RUN_EVERYTHING = /\[depwave:all\]/i;
 const LOCKFILES = new Set(['pnpm-lock.yaml', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'bun.lock', 'bun.lockb']);
 const WORKSPACE_CONFIGS = new Set(['pnpm-workspace.yaml', 'nx.json', 'turbo.json', 'lerna.json', 'depwave.config.json']);
 /** CI definitions and toolchain pins: they change the environment every test runs in (a Node or Bun bump breaks tests). */
@@ -42,6 +46,7 @@ const DIRECTORY_CONFIG = /^(tsconfig.*\.json|jsconfig.*\.json|(vitest|vite|jest)
  *                                                     dependents (everything if the adapter can't tell)
  *   tsconfig / test-runner / babel config in dir D  → every file under D
  *   a workspace package's manifest                  → that package and every package that (transitively) depends on it
+ *   `[depwave:all]` in a commit message             → everything
  *
  * Seeds come from BOTH graphs, so a deleted file seeds its old dependents and an added one its new dependents.
  *
@@ -67,6 +72,12 @@ export function analyzeChanges(changes: readonly FileChange[], ctx: DiffContext)
   const seedFilesWhere = (predicate: (path: string) => boolean) => {
     for (const path of allFiles) if (predicate(path)) seedWholeFile(path);
   };
+
+  const override = ctx.commits?.find((c) => RUN_EVERYTHING.test(c.message));
+  if (override) {
+    triggers.push({ kind: 'commit-message', path: `commit ${override.sha.slice(0, 12)}`, detail: 'its message says [depwave:all]' });
+    seedFilesWhere(() => true);
+  }
 
   for (const change of changes) {
     const changed = symbolLevel && change.status === 'M' ? changedSymbols(change.path, ctx.baseFacts?.get(change.path), ctx.headFacts?.get(change.path)) : undefined;

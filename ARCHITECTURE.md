@@ -567,7 +567,7 @@ checkout.test.ts
 - Runner adapters: `vitest related`, `jest --runTestsByPath`, `pytest` node IDs.
 - **Shadow mode (⭐ the trust builder):** run the full suite while recording depwave's prediction, and publish **recall** (impacted tests that failed ÷ all tests that failed) and **reduction %**. Only switch to enforced selection once recall is ≥ 99.9% over N weeks.
   - ✅ **Built:** `depwave shadow --results <vitest|jest json | junit xml>` (exit 3 on a miss), the Action's `test-results` input, and a CI step on this repo that uploads `depwave-shadow.json` per build. Its first run found a real false negative: TS resolution picked `x.d.mts` for `./x.mjs`, so tests weren't linked to the runtime file. The resolver now follows a declaration file to its JavaScript sibling.
-- Safety valves: always run everything on `main` nightly, and support a `[depwave:all]` commit-message override.
+- ✅ Safety valves: a `[depwave:all]` commit-message override, and a full run outside pull requests, so a nightly `schedule` runs everything (this repo's CI does).
 - ✅ **Exit:** used on its own repo plus one real OSS monorepo, with a published benchmark in the README.
 
 ---

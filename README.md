@@ -166,6 +166,7 @@ symbol level to select a subset of what the file level selects.
 | A workspace package's `package.json` | That package and every package that depends on it |
 | A file no code imports (JSON fixtures, templates, images) | The tests of its package, plus every test that imports one of that package's test helpers |
 | `__snapshots__/x.test.ts.snap` | Exactly `x.test.ts` |
+| `[depwave:all]` in a commit message | Every test: the manual override ([safety valves](docs/github-action.md#safety-valves)) |
 | Docs and editor config (`*.md`, `LICENSE`, `.vscode/`, …) outside test-data directories | Nothing |
 
 ### What depwave can't see

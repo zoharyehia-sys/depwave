@@ -124,6 +124,7 @@ export class AnalysisPipeline {
       headWorkspace: after.workspace,
       granularity: this.granularity,
       lockfiles: await this.lockfileDiffs(changes, mergeBase, headRev),
+      commits: await git.commitMessages(mergeBase, headRev),
       ...(symbolLevel
         ? { baseFacts: await this.factsAt(mergeBase, before.graph, modified), headFacts: await this.factsAt(headRev, after.graph, modified) }
         : {}),
