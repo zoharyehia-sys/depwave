@@ -19,7 +19,6 @@
   },
   "dependencies": {
     "@depwave/core": "workspace:*",
-    "tree-sitter-typescript": "0.23.2",
     "web-tree-sitter": "0.27.1"
   }
 }

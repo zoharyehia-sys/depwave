@@ -15,7 +15,18 @@ separately: `pnpm typecheck`, `pnpm lint:deps`, `pnpm test` and `pnpm build`. Te
 aliases `@depwave/*` to `packages/*/src`), so no build is needed first. The CLI itself runs from the build:
 `node packages/cli/dist/bin.js`.
 
-CI runs on Ubuntu and Windows, and on a checkout path with spaces and Hebrew characters: path handling bugs hide there.
+CI runs on Ubuntu, Windows and macOS, and on a checkout path with spaces and Hebrew characters: path handling bugs hide
+there.
+
+## The npm package
+
+`packages/cli` is the published `depwave` package; the other packages are private. Packing it runs
+[`bundle.mjs`](packages/cli/bundle.mjs), which puts them in one file along with every dependency except `better-sqlite3`
+and `web-tree-sitter`. `pnpm build && pnpm smoke:pack` packs it, installs the tarball into a clean project and runs it,
+the same as CI on every OS. The version in `packages/cli/package.json` is what `--version` prints, and it's part of the
+cache key.
+
+The two Tree-sitter grammars are vendored in [`packages/parser/grammars`](packages/parser/grammars).
 
 ## Layout
 
@@ -28,7 +39,7 @@ CI runs on Ubuntu and Windows, and on a checkout path with spaces and Hebrew cha
 | `@depwave/git` | Git access through the `git` CLI |
 | `@depwave/cache` | The SQLite cache |
 | `@depwave/reporters` | Text, JSON and Markdown reports |
-| `@depwave/cli` | Commands, and the composition root |
+| `depwave` (`packages/cli`) | Commands, and the composition root. The one published package |
 
 `dependency-cruiser` enforces the layering: `core` imports nothing, adapters import only `core`, and `cli` may import
 anything. [ARCHITECTURE.md](ARCHITECTURE.md) has the design, and [docs/adr](docs/adr) the decisions behind it.

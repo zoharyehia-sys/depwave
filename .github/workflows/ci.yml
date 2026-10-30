@@ -13,8 +13,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Windows is in the matrix on purpose: path normalization bugs hide there.
-        os: [ubuntu-latest, windows-latest]
+        # Windows is in the matrix on purpose: path normalization bugs hide there. macOS has a case-insensitive disk
+        # and a temp directory behind a symlink.
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -72,6 +73,30 @@ jobs:
             depwave-impact.json
             depwave-shadow.json
           if-no-files-found: ignore
+
+  # What npm users get, which isn't what the jobs above test: one bundled file, installed from a tarball, through a
+  # bin shim, with SQLite's prebuild for that OS and Node.js ABI.
+  packed:
+    name: packed install (${{ matrix.os }}, Node ${{ matrix.node }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [22]
+        include:
+          - os: ubuntu-latest
+            node: 24
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm smoke:pack
 
   # Paths with spaces and non-ASCII characters break naive quoting, URL conversion and `-z`-less git parsing.
   # The maintainer's own checkout has a Hebrew path; this keeps CI honest about it.
