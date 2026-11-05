@@ -45,6 +45,16 @@ describe('compareShadow', () => {
   it('cannot miss anything when a global trigger selected every test, so incomplete results are fine', () => {
     const result = compareShadow(plan([], true), run([{ path: 'b.test.ts', status: 'failed' }], 2), tests('b.test.ts', 'c.test.ts'));
     expect(result).toMatchObject({ verdict: 'sound', runAll: true, caught: ['b.test.ts'], missed: [], partial: true });
+    // …but the result says what that rests on: the selection wasn't tested, and not every test ran.
+    expect(result.basis).toEqual({ selectionTested: false, complete: false });
+  });
+
+  it('records a complete run that tested the selection, and an incomplete one, in its basis', () => {
+    expect(compareShadow(plan(['a.test.ts']), run(passed('a.test.ts', 'b.test.ts')), tests('a.test.ts', 'b.test.ts')).basis).toEqual({
+      selectionTested: true,
+      complete: true,
+    });
+    expect(compareShadow(plan(['a.test.ts']), run(passed('a.test.ts'), 1), tests('a.test.ts')).basis).toEqual({ selectionTested: true, complete: false });
   });
 
   it('is inconclusive, not sound, when failures could not be traced to a file', () => {
