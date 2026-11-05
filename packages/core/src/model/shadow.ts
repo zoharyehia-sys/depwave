@@ -25,6 +25,14 @@ export interface ShadowResult {
   verdict: 'sound' | 'missed' | 'inconclusive';
   /** A global trigger selected everything, so nothing can be missed, and incomplete results don't matter. */
   runAll: boolean;
+  /**
+   * What the verdict rests on. These are separate claims, and aggregating runs needs both:
+   * selectionTested: depwave chose a subset (not `runAll`), so its failures say something about the selection. A run
+   *   where everything was selected can't miss anything, and its failures don't count as caught by the selection.
+   * complete: every test file depwave knows has a result, and every failure was traced to a file. Everything being
+   *   selected doesn't mean everything ran.
+   */
+  basis: { selectionTested: boolean; complete: boolean };
   /** Test files depwave selected. */
   selected: number;
   /** Files that appear in the results, test files or not. */
