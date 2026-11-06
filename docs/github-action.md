@@ -51,8 +51,9 @@ the pull request until someone fixes the analysis.
 
 For Jest, use `npx jest --runTestsByPath $TESTS`.
 
-**Pinning.** There are no releases yet, so pin the action to a full commit SHA, as above. A branch like `@main` moves,
-so the code your CI runs could change without you knowing. Update the SHA deliberately.
+**Pinning.** Pin the action to a full commit SHA, as above. A branch like `@main` moves, and so can a tag, so the code
+your CI runs could change without you knowing. Update the SHA deliberately; the [releases](https://github.com/zoharyehia-sys/depwave/releases)
+name the commit of each version.
 
 **Notes**
 - The action sets up Node.js 22 with `actions/setup-node`. If your tests need another version, set it up after the

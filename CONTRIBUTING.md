@@ -28,6 +28,8 @@ cache key.
 
 The two Tree-sitter grammars are vendored in [`packages/parser/grammars`](packages/parser/grammars).
 
+Releases are cut from tags, and [docs/releasing.md](docs/releasing.md) has the steps.
+
 ## Layout
 
 | Package | Role |

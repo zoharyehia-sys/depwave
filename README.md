@@ -8,16 +8,18 @@ files, across workspace packages, and through lockfile updates. When it can't pr
 selects the test.
 
 [![CI](https://github.com/zoharyehia-sys/depwave/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/zoharyehia-sys/depwave/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/depwave/alpha?label=npm%40alpha&color=cb3837)](https://www.npmjs.com/package/depwave)
 ![Node.js 22+](https://img.shields.io/badge/node-%E2%89%A5%2022-339933?logo=node.js&logoColor=white)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-[Quick start](#quick-start) · [Why depwave](#why-depwave) · [How it works](#how-it-works) ·
+[Quick start](#quick-start) · [Commands](#commands) · [Why depwave](#why-depwave) · [How it works](#how-it-works) ·
 [Safety](#correctness-and-safety) · [Results](#results-on-real-repositories) · [CI](#github-actions) ·
-[Docs](#documentation)
+[Status](#status-and-feedback) · [Docs](#documentation)
 
 ## Quick start
 
-You need Node.js 22 or later, `git`, and a clone whose history contains the merge base of the revisions you compare.
+You need Node.js 22 or later, `git`, and a clone whose history contains the merge base of the revisions you compare
+(in GitHub Actions, check out with `fetch-depth: 0`).
 
 > [!WARNING]
 > **depwave is in alpha.** Keep running your full test suite and use [shadow mode](#shadow-mode) to see what depwave
@@ -30,7 +32,8 @@ npm install --global depwave@alpha
 ```
 
 The install has no build step: SQLite comes prebuilt for Linux, macOS and Windows (x64 and arm64), and the parser is
-WebAssembly. To build from source instead, see [Contributing](CONTRIBUTING.md#setup).
+WebAssembly. To try it without installing, prefix any command with `npx depwave@alpha` instead of `depwave`. To build
+from source, see [Contributing](CONTRIBUTING.md#setup).
 
 **2. Analyze a diff.** From the root of any git repository:
 
@@ -79,8 +82,21 @@ Add `--head WORKTREE` to include uncommitted and untracked changes. depwave writ
 its cache in `.depwave/`, which contains its own `.gitignore`.
 
 **Next:** run it in [CI](#github-actions), and check it against your full test runs with
-[shadow mode](#shadow-mode) before you skip anything. Every command and option is in the
-[CLI reference](docs/cli.md).
+[shadow mode](#shadow-mode) before you skip anything.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `depwave impact` | Lists the test files a diff can reach, grouped by package. `--format json` for scripts, `markdown` for PR comments |
+| `depwave why <file>` | Shows the chain from a change to a test, or says why the test isn't impacted |
+| `depwave shadow --results <file>` | Checks a full test run's failures against what depwave would have selected |
+| `depwave cycles` | Lists import cycles, and exits with 4 when there are any, so CI can use it as a lint |
+| `depwave graph` | Draws workspace packages, or the files of one package, as Mermaid or Graphviz |
+| `depwave cache stats`, `depwave cache clear` | Inspect or empty the analysis cache in `.depwave/` |
+
+`depwave <command> --help` lists a command's options with examples. The [CLI reference](docs/cli.md) has every option,
+exit code and JSON field.
 
 ## Why depwave
 
@@ -293,8 +309,8 @@ jobs:
 The action keeps its cache between runs, so only files and commits it hasn't seen are analyzed: on Jest's repository,
 about 8 seconds cold and 1.6 with the cache, measured locally ([Caching](docs/github-action.md#caching)).
 
-There are no releases yet, so pin a full commit SHA rather than a moving branch. This exact workflow runs on every
-pull request to this repository. The [Action guide](docs/github-action.md) covers every input and output, what runs
+Pin a full commit SHA, as above, rather than a branch or tag: a SHA can't move under you. This exact workflow runs on
+every pull request to this repository. The [Action guide](docs/github-action.md) covers every input and output, what runs
 in each case, shadow mode in CI, and other CI systems.
 
 ## Compatibility
@@ -308,10 +324,16 @@ in each case, shadow mode in CI, and other CI systems.
 | Runtime | Node.js 22+ with git. CI runs on Ubuntu, Windows and macOS, including a checkout path with spaces and non-ASCII characters, and installs the packed npm package on each | |
 | Distribution | npm (`depwave@alpha`), GitHub Action, source build | Stable releases |
 
-Beyond test selection, `depwave cycles` lints for import cycles and `depwave graph` draws the dependency graph as
-Mermaid or Graphviz ([CLI reference](docs/cli.md)). Planned but not built yet: type-aware method binding, plugins
-for framework conventions, aggregated shadow evidence, and `depwave doctor`. See the
-[roadmap](ARCHITECTURE.md#5-implementation-roadmap).
+## Status and feedback
+
+depwave is in **alpha**. Selection rules, the CLI and the JSON output can still change between releases, and the
+[changelog](CHANGELOG.md) lists every change.
+
+- **A missed test is the most valuable report.** If shadow mode says `missed` and `depwave why` shows a dependency
+  depwave didn't see, please [open an issue](https://github.com/zoharyehia-sys/depwave/issues) with that output, and a
+  small repository that reproduces it if you can.
+- **Planned:** aggregated shadow evidence across runs, type-aware method binding, plugins for framework conventions,
+  and `depwave doctor`. See the [roadmap](ARCHITECTURE.md#5-implementation-roadmap).
 
 ## Documentation
 
@@ -323,7 +345,8 @@ for framework conventions, aggregated shadow evidence, and `depwave doctor`. See
 | [Benchmark report](docs/benchmarks.md) | Method, pinned commits, per-commit results, how to reproduce |
 | [Architecture](ARCHITECTURE.md) and [ADRs](docs/adr) | The data model, algorithms and caching design, and the decisions behind them |
 | [Contributing](CONTRIBUTING.md) | Development setup, project layout, what a change to selection rules needs |
+| [Changelog](CHANGELOG.md) | What changed in each release |
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) © Zohar Yehia
