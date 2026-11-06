@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { WORKTREE, type FileChange } from '@depwave/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { TempRepo } from '../../../test/support/tempRepo.js';
-import { GitError, GitService } from './GitService.js';
+import { GitError, GitService, spawnError } from './GitService.js';
 
 const lines = (n: number, prefix = 'line') => Array.from({ length: n }, (_, i) => `${prefix} ${i + 1}`).join('\n') + '\n';
 const byPath = (changes: FileChange[]) => [...changes].sort((a, b) => a.path.localeCompare(b.path));
@@ -101,6 +101,15 @@ describe('GitService (against a real repo)', () => {
     const error = new GitError(['rev-parse'], 128, 'fatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n');
     expect(error.message).toBe('git rev-parse failed (exit 128): fatal: not a git repository (or any parent up to mount point /)');
     expect(error.stderr).toContain('Stopping at filesystem boundary');
+  });
+
+  it('says whether the directory or git is missing, which Node reports alike (spawn git ENOENT)', async () => {
+    const missing = join(tmpdir(), 'depwave-no-such-dir', 'repo');
+    await expect(new GitService(missing).root()).rejects.toThrow(`directory not found: ${missing}`);
+    const enoent = Object.assign(new Error('spawn git ENOENT'), { code: 'ENOENT' });
+    expect(spawnError(enoent, tmpdir()).message).toBe('git not found: install git and make sure it is on PATH');
+    const other = Object.assign(new Error('spawn EACCES'), { code: 'EACCES' });
+    expect(spawnError(other, tmpdir())).toBe(other);
   });
 
   it('lists the commit messages of a range, whole and newest first; WORKTREE counts as HEAD', async () => {
