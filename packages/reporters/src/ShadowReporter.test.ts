@@ -6,6 +6,7 @@ const ctx = { base: '0123456789abcdef0123456789abcdef01234567', head: 'HEAD' };
 const result = (overrides: Partial<ShadowResult>): ShadowResult => ({
   verdict: 'sound',
   runAll: false,
+  basis: { selectionTested: true, complete: true },
   selected: 3,
   ran: 40,
   partial: false,
@@ -52,11 +53,23 @@ describe('shadow reporters', () => {
     expect(inconclusive).toContain('#### 🕵️ Shadow check: 2 failures could not be traced to a test file ⚠️');
     expect(inconclusive).toContain('> [!WARNING]');
 
-    // Under a global trigger nothing can be missed: incomplete results don't add a warning.
-    const runAll = renderShadowMarkdown(result({ runAll: true, failed: ['a.test.ts'], caught: ['a.test.ts'], partial: true, notRun: ['z.test.ts'] }), ctx);
-    expect(runAll).toContain('all 1 failing test file selected ✅');
-    expect(runAll).toContain('a global trigger selected every test.');
-    expect(runAll).not.toContain('[!WARNING]');
+  });
+
+  it('run-all: says the selection was not tested, and that selected is not the same as ran', () => {
+    const runAll = result({ runAll: true, basis: { selectionTested: false, complete: false }, failed: ['a.test.ts'], caught: ['a.test.ts'], partial: true, notRun: ['z.test.ts'] });
+    const md = renderShadowMarkdown(runAll, ctx);
+    expect(md).toContain('#### 🕵️ Shadow check: everything was selected, so nothing could be missed ✅');
+    expect(md).toContain("a global trigger selected every test, so this run doesn't test depwave's selection.");
+    expect(md).toContain('Failed: `a.test.ts`.');
+    expect(md).not.toContain('Caught');
+    // Nothing can be missed, so no warning, but the gap is still on record.
+    expect(md).not.toContain('[!WARNING]');
+    expect(md).toContain('> [!NOTE]\n> Everything was selected, but these have no result: `z.test.ts`.');
+
+    const text = renderShadowText(runAll, ctx);
+    expect(text).toContain('everything was selected, so nothing could be missed ✔\n');
+    expect(text).toContain('\n  failed: a.test.ts\n');
+    expect(text).toContain('\n  everything was selected, but these have no result: z.test.ts\n');
   });
 
   it('markdown: no failures is still worth a line (the track record), with the savings', () => {

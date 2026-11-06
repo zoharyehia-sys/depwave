@@ -66,7 +66,9 @@ depwave graph --level file --package @acme/ui --format dot | dot -Tsvg > ui.svg
   distance and score, and `unresolved` imports.
 
 `depwave why --format json` and `depwave shadow --format json` print the explanation and the shadow result, plus the
-revisions compared. `depwave cycles --format json` prints each cycle's sorted `files` and one `loop`, plus unresolved
+revisions compared. The shadow result's `basis` says what its verdict rests on: `selectionTested` is false when
+everything was selected (nothing could be missed, so the run says nothing about the selection), and `complete` is false
+when some test files have no result or some failures name no file. `depwave cycles --format json` prints each cycle's sorted `files` and one `loop`, plus unresolved
 imports (a cycle through one can't be seen). `depwave graph --format json` prints `nodes` and `edges`. The JSON shapes
 aren't stable yet.
 

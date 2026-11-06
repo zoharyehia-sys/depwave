@@ -16,13 +16,15 @@ export function compareShadow(plan: TestPlan, run: ShadowRun, testFiles: Readonl
   const unrecognized = [...byFile.keys()].filter((p) => !testFiles.has(p)).sort();
   const notRun = [...testFiles].filter((p) => !byFile.has(p)).sort();
 
+  const complete = notRun.length === 0 && run.unattributedFailures === 0;
   let verdict: ShadowResult['verdict'] = 'sound';
   if (missed.length > 0) verdict = 'missed';
-  else if (!plan.runAll && (notRun.length > 0 || run.unattributedFailures > 0)) verdict = 'inconclusive';
+  else if (!plan.runAll && !complete) verdict = 'inconclusive';
 
   return {
     verdict,
     runAll: plan.runAll,
+    basis: { selectionTested: !plan.runAll, complete },
     selected: selected.size,
     ran: byFile.size,
     partial: notRun.length > 0,

@@ -209,7 +209,7 @@ depwave shadow 2f61664a3bd4...d0d3fed2d141: 1 failing test file NOT selected ✘
 
 | Verdict | What it means | Exit code |
 |---|---|---|
-| `sound` | **No miss was observed in this run.** Every test file depwave knows has a result, and every one that failed was selected (or nothing failed) | 0 |
+| `sound` | **No miss was observed in this run.** Every test file depwave knows has a result, and every one that failed was selected (or nothing failed). Also when a global trigger selected every test: then nothing can be missed, and the run doesn't test the selection | 0 |
 | `missed` | A test file that failed was **not** selected: a flaky test, or a dependency depwave didn't see | **3** |
 | `inconclusive` | No miss was observed, but the check was incomplete: some test files have no result (they're listed), or some failures can't be traced to a file (JUnit without file paths). A failure there would have gone unchecked | 0 |
 
@@ -220,6 +220,9 @@ depwave shadow 2f61664a3bd4...d0d3fed2d141: 1 failing test file NOT selected ✘
 > how much a selective run would have saved. Confidence comes from many runs where tests actually failed and were all
 > selected.
 
+- Everything selected isn't the same as everything ran. When a global trigger selects every test, the report says so,
+  lists test files that have no result, and calls failures `failed`, not `caught`. In JSON, `shadow.basis` keeps the
+  two apart: `selectionTested` and `complete`.
 - A result it can't read never counts as a pass. An unknown status leaves the file without a result, so the run is
   `inconclusive`, and a malformed or truncated report is an error.
 - It reads Vitest and Jest JSON (`--reporter=json`, `jest --json`) and JUnit XML. Repeat `--results` for several

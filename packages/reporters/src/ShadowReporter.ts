@@ -12,7 +12,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 /** What a selective run would have saved: "would have run 3 of 41 test files (93% skipped)". */
 function savings(result: ShadowResult): string {
-  if (result.runAll) return 'a global trigger selected every test';
+  if (result.runAll) return "a global trigger selected every test, so this run doesn't test depwave's selection";
   const total = result.totalTests;
   const skipped = total > 0 ? ` (${Math.max(0, Math.round((1 - result.selected / total) * 100))}% skipped)` : '';
   return `a selective run would have run ${result.selected} of ${plural(total, 'test file')}${skipped}`;
@@ -27,11 +27,13 @@ function headline(result: ShadowResult): string {
         ? `no miss seen, but ${result.notRun.length} of ${plural(result.totalTests, 'test file')} have no result`
         : `${plural(result.unattributedFailures, 'failure')} could not be traced to a test file`;
     case 'sound':
+      if (result.runAll) return 'everything was selected, so nothing could be missed';
       return result.failed.length === 0 ? 'no failures, nothing to miss' : `all ${plural(result.failed.length, 'failing test file')} selected`;
   }
 }
 
 const MISSED_HINT = 'Each one is either a flaky test or a dependency depwave did not see. Run `depwave why <test>` to check, and please report the second kind.';
+const SELECTED_NOT_RAN = 'everything was selected, but these have no result';
 const NOT_RUN_HINT =
   "A failure there would go unchecked. Pass their results too (--results), or keep tests your runners don't run out of the analysis (depwave.config.json `ignore`).";
 
@@ -43,10 +45,12 @@ const NOT_RUN_HINT =
 export function renderShadowText(result: ShadowResult, ctx: ShadowContext): string {
   const mark = result.verdict === 'sound' ? '✔' : result.verdict === 'missed' ? '✘' : '?';
   const lines = [`depwave shadow ${short(ctx.base)}...${short(ctx.head)}: ${headline(result)} ${mark}`, `  ${savings(result)}`];
-  if (result.caught.length > 0) lines.push(`  caught: ${listPaths(result.caught, MAX_LISTED)}`);
+  // Under a global trigger the selection wasn't tested, so its failures were not "caught" by it.
+  if (result.caught.length > 0) lines.push(`  ${result.basis.selectionTested ? 'caught' : 'failed'}: ${listPaths(result.caught, MAX_LISTED)}`);
   for (const path of result.missed) lines.push(`  missed: ${path}${result.unrecognized.includes(path) ? ' (not recognized as a test file)' : ''}`);
   if (result.missed.length > 0) lines.push(`  ${MISSED_HINT}`);
   if (result.partial && !result.runAll) lines.push(`  no result for: ${listPaths(result.notRun, MAX_LISTED)}`, `  ${NOT_RUN_HINT}`);
+  if (result.partial && result.runAll) lines.push(`  ${SELECTED_NOT_RAN}: ${listPaths(result.notRun, MAX_LISTED)}`);
   if (result.partial && result.unattributedFailures > 0) lines.push(`  ${plural(result.unattributedFailures, 'failure')} could not be traced to a test file`);
   if (result.unrecognized.length > 0) lines.push(`  ⚠ ${plural(result.unrecognized.length, 'result file')} depwave does not see as tests: ${listPaths(result.unrecognized)}`);
   return `${lines.join('\n')}\n`;
@@ -62,7 +66,7 @@ export function renderShadowMarkdown(result: ShadowResult, ctx: ShadowContext): 
     if (result.missed.length > MAX_LISTED) lines.push(`> - … and ${result.missed.length - MAX_LISTED} more`);
     lines.push('>', `> ${MISSED_HINT}`, '');
   }
-  if (result.caught.length > 0) lines.push(`Caught: ${listPaths(result.caught, MAX_LISTED, (p) => `\`${p}\``)}.`, '');
+  if (result.caught.length > 0) lines.push(`${result.basis.selectionTested ? 'Caught' : 'Failed'}: ${listPaths(result.caught, MAX_LISTED, (p) => `\`${p}\``)}.`, '');
   if (result.partial && !result.runAll) {
     lines.push(
       '> [!WARNING]',
@@ -70,6 +74,9 @@ export function renderShadowMarkdown(result: ShadowResult, ctx: ShadowContext): 
       `> ${NOT_RUN_HINT}`,
       '',
     );
+  }
+  if (result.partial && result.runAll) {
+    lines.push('> [!NOTE]', `> Everything was selected, but these have no result: ${listPaths(result.notRun, 3, (p) => `\`${p}\``)}.`, '');
   }
   if (result.unattributedFailures > 0 && !result.runAll) {
     lines.push(
