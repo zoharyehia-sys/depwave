@@ -3,7 +3,7 @@
 depwave follows [Semantic Versioning](https://semver.org). Until 1.0, a minor version can change selection rules, the
 CLI and the JSON output.
 
-## 0.1.0-alpha.0 (unreleased)
+## 0.1.0-alpha.0 (2026-11-07)
 
 The first npm release. It's an alpha: run it in
 [shadow mode](https://github.com/zoharyehia-sys/depwave#shadow-mode) next to your full test suite, and don't skip tests
