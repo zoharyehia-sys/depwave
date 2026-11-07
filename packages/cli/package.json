@@ -1,26 +1,51 @@
 {
-  "name": "@depwave/cli",
-  "version": "0.0.0",
-  "private": true,
+  "name": "depwave",
+  "version": "0.1.0-alpha.0",
   "license": "MIT",
-  "description": "AST-driven monorepo dependency & impact analyzer.",
-  "type": "module",
-  "bin": {
-    "depwave": "./dist/bin.js"
+  "author": "Zohar Yehia",
+  "description": "Test-impact analysis for JS/TS monorepos: run the tests your change can actually reach, and see why each one was selected.",
+  "keywords": [
+    "test-impact-analysis",
+    "test-selection",
+    "monorepo",
+    "dependency-graph",
+    "ast",
+    "tree-sitter",
+    "typescript",
+    "ci"
+  ],
+  "homepage": "https://github.com/zoharyehia-sys/depwave#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zoharyehia-sys/depwave.git"
   },
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    }
+  "bugs": "https://github.com/zoharyehia-sys/depwave/issues",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "depwave": "./dist/depwave.mjs"
   },
   "files": [
-    "dist"
+    "dist/depwave.mjs",
+    "grammars",
+    "CHANGELOG.md",
+    "THIRD-PARTY-LICENSES.txt"
   ],
+  "publishConfig": {
+    "access": "public",
+    "tag": "alpha"
+  },
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "prepack": "node bundle.mjs"
   },
   "dependencies": {
+    "better-sqlite3": "13.0.3",
+    "web-tree-sitter": "0.27.1"
+  },
+  "devDependencies": {
     "@depwave/cache": "workspace:*",
     "@depwave/core": "workspace:*",
     "@depwave/git": "workspace:*",
@@ -29,6 +54,7 @@
     "@depwave/resolver": "workspace:*",
     "@depwave/workspace": "workspace:*",
     "clipanion": "4.0.0-rc.4",
+    "esbuild": "^0.28.2",
     "saxes": "6.0.0",
     "typanion": "^3.14.0"
   }

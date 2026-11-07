@@ -1,0 +1,61 @@
+name: Release
+
+# Push a tag `v<version>` matching packages/cli/package.json. The packed package is tested like CI tests it, published
+# to npm through trusted publishing (no token: npm trusts this workflow, and adds provenance), and announced as a
+# GitHub release with its changelog section. A version already on npm is not published again, so a release published
+# by hand (the first one) still gets its GitHub release. See docs/releasing.md.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the GitHub release
+      id-token: write # npm trusted publishing and provenance
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the tests analyze this repository's own history
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check the tag names the package version
+        run: |
+          VERSION=$(node -p "require('./packages/cli/package.json').version")
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME doesn't match packages/cli/package.json ($VERSION)"
+            exit 1
+          fi
+          node scripts/release/changelog.mjs "$VERSION" > "$RUNNER_TEMP/notes.md" # fails without a changelog section
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - run: pnpm check
+      - run: pnpm smoke:pack
+
+      - name: Publish to npm
+        run: |
+          if [ -n "$(npm view "depwave@$VERSION" version 2>/dev/null)" ]; then
+            echo "depwave@$VERSION is already on npm, so it isn't published again."
+            exit 0
+          fi
+          npm install --global npm@11 # trusted publishing needs npm 11.5.1 or later
+          # pnpm packs (it rewrites workspace: versions); npm publishes (OIDC). Tag and access come from publishConfig.
+          (cd packages/cli && pnpm pack --pack-destination "$RUNNER_TEMP")
+          npm publish "$RUNNER_TEMP/depwave-$VERSION.tgz"
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRERELEASE=()
+          if [[ "$VERSION" == *-* ]]; then PRERELEASE=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "depwave $VERSION" --notes-file "$RUNNER_TEMP/notes.md" "${PRERELEASE[@]}"

@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { WORKTREE, type CommitMessage, type FileChange, type GitPort, type Hunk, type Revision, type TrackedFile } from '@depwave/core';
@@ -176,6 +177,12 @@ function assertCommit(rev: Revision, name: string): void {
   if (rev === WORKTREE) throw new Error(`${name} must be a commit, not ${WORKTREE}`);
 }
 
+/** Node reports a missing working directory exactly like a missing git (`spawn git ENOENT`): tell them apart. */
+export function spawnError(error: NodeJS.ErrnoException, cwd: string): Error {
+  if (error.code !== 'ENOENT') return error;
+  return existsSync(cwd) ? new Error('git not found: install git and make sure it is on PATH') : new Error(`directory not found: ${cwd}`);
+}
+
 function run(cwd: string, args: string[], input?: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const child = spawn('git', args, {
@@ -188,7 +195,7 @@ function run(cwd: string, args: string[], input?: string): Promise<Buffer> {
     const err: Buffer[] = [];
     child.stdout.on('data', (chunk: Buffer) => out.push(chunk));
     child.stderr.on('data', (chunk: Buffer) => err.push(chunk));
-    child.on('error', reject);
+    child.on('error', (error) => reject(spawnError(error, cwd)));
     child.on('close', (code) => {
       if (code === 0) resolve(Buffer.concat(out));
       else reject(new GitError(args, code, Buffer.concat(err).toString('utf8')));

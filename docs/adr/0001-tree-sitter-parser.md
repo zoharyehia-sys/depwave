@@ -9,7 +9,9 @@ We need fast, error-tolerant extraction of imports, exports, symbols and referen
 ## Decision
 Use Tree-sitter behind a `LanguageAdapter` port.
 
-- **Runtime: `web-tree-sitter` (WASM)**, with grammars loaded from the `.wasm` files their npm packages ship.
+- **Runtime: `web-tree-sitter` (WASM)**, with grammars loaded from `.wasm` files vendored in
+  `packages/parser/grammars`. They come from the grammars' npm packages, which aren't dependencies: those add 38 MB
+  and an install script to every install, for two files totalling 2.9 MB.
   The original plan was native bindings with a WASM fallback. Shipping WASM only means no node-gyp, no prebuilt
   binaries per OS/arch, identical behaviour on Windows/Linux/macOS, and it runs in worker threads. Measured
   throughput (~3.5 MB/s single-threaded, including multi-MB bundles) is well within budget. Native bindings stay

@@ -28,9 +28,46 @@ describe('depwave CLI', () => {
     expect(stdout.trim()).toBe(VERSION);
   });
 
-  it('documents the impact command in --help', async () => {
-    const { stdout } = await run(['--help']);
-    expect(stdout).toContain('depwave impact');
+  it('prints one overview for no arguments, help, -h and --help', async () => {
+    const outputs = await Promise.all([[], ['help'], ['-h'], ['--help']].map((args) => run(args)));
+    for (const { code, stdout } of outputs) {
+      expect(code).toBe(0);
+      expect(stdout).toBe(outputs[0]!.stdout);
+    }
+    expect(outputs[0]!.stdout).toMatch(new RegExp(`^depwave ${VERSION.replace(/\./g, '\\.')}\n`));
+    expect(outputs[0]!.stdout).toContain('\n  impact          List the test files a diff impacts');
+  });
+
+  it('names option values in help and errors, instead of clipanion\'s #0', async () => {
+    const help = (await run(['impact', '--help'])).stdout.replace(/\x1b\[\d+m/g, '');
+    expect(help).toContain('--base <rev>');
+    expect(help).not.toContain('#0');
+    // Descriptions line up even though the value names are longer than #0.
+    const columns = help.split('\n').flatMap((line) => /^ {2}--\S+(?: <[a-z]+>)? +/.exec(line)?.[0].length ?? []);
+    expect(columns.length).toBeGreaterThan(5);
+    expect(new Set(columns).size).toBe(1);
+    expect((await run(['impact', '--bogus'])).stdout).toContain('[--granularity <level>]');
+  });
+
+  it('answers `depwave cache` and `depwave cache --help` with its subcommands', async () => {
+    for (const args of [['cache'], ['cache', '--help']]) {
+      const { code, stdout } = await run(args);
+      expect(code).toBe(0);
+      expect(stdout).toMatch(/^Usage: depwave cache <stats\|clear>/);
+    }
+  });
+
+  it('explains a missing --results or results file in one line', async () => {
+    const missingFlag = await run(['shadow']);
+    expect(missingFlag.code).toBe(EXIT_FAILURE);
+    expect(missingFlag.stderr).toBe('depwave: shadow needs --results <file>: the results of a full test run (Vitest/Jest JSON or JUnit XML)\n');
+    const missingFile = await run(['shadow', '--results', 'no-such-results.json']);
+    expect(missingFile.stderr).toMatch(/^depwave: no-such-results\.json: file not found \(looked for .*no-such-results\.json\)\n$/);
+  });
+
+  it('says the --cwd directory is missing, not "spawn git ENOENT"', async () => {
+    const missing = join(tmpdir(), 'depwave-no-such-dir', 'repo');
+    expect((await run(['impact', '--cwd', missing])).stderr).toBe(`depwave: directory not found: ${missing}\n`);
   });
 
   it('fails with one readable line (no stack trace) outside a git repository', async () => {

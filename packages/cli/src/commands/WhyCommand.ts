@@ -23,7 +23,7 @@ export class WhyCommand extends Command {
   target = Option.String({ name: 'file' });
   base = Option.String('--base', 'origin/main', { description: 'Base revision (the merge-base with HEAD is used)' });
   head = Option.String('--head', 'HEAD', { description: 'Head revision, or WORKTREE for uncommitted changes' });
-  format = Option.String('--format', 'text', { validator: t.isEnum(['text', 'json'] as const), description: 'Output format' });
+  format = Option.String('--format', 'text', { validator: t.isEnum(['text', 'json'] as const), description: 'text (default) or json' });
   cwd = Option.String('--cwd', { description: 'Repository to analyze (defaults to the current directory)' });
   cache = Option.Boolean('--cache', true, { description: 'Use the persistent cache in .depwave/ (--no-cache to bypass)' });
   granularity = Option.String('--granularity', 'symbol', { validator: t.isEnum(['symbol', 'file'] as const), description: 'symbol (default) or file' });

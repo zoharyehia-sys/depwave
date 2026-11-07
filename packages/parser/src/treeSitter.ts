@@ -1,16 +1,16 @@
-import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { Language, Parser, type Tree } from 'web-tree-sitter';
 import type { LanguageAdapter } from '@depwave/core';
 
 /**
  * WASM Tree-sitter (web-tree-sitter): no native build, identical behaviour on every OS and inside worker threads.
- * Grammars ship as .wasm inside their npm packages.
+ * The grammars are vendored in `grammars/` (see its README), one level up from src/, dist/ and the published bundle.
  */
 export type GrammarId = 'typescript' | 'tsx';
 
-const GRAMMAR_FILES: Record<GrammarId, string> = {
-  typescript: 'tree-sitter-typescript/tree-sitter-typescript.wasm',
-  tsx: 'tree-sitter-typescript/tree-sitter-tsx.wasm',
+const GRAMMAR_FILES: Record<GrammarId, URL> = {
+  typescript: new URL('../grammars/tree-sitter-typescript.wasm', import.meta.url),
+  tsx: new URL('../grammars/tree-sitter-tsx.wasm', import.meta.url),
 };
 
 /** A language adapter that knows which Tree-sitter grammar parses its files. */
@@ -36,9 +36,8 @@ export function loadTreeSitter(): Promise<TreeSitterRuntime> {
 
 async function init(): Promise<TreeSitterRuntime> {
   await Parser.init();
-  const require = createRequire(import.meta.url);
   const entries = await Promise.all(
-    Object.entries(GRAMMAR_FILES).map(async ([id, file]) => [id as GrammarId, await Language.load(require.resolve(file))] as const),
+    Object.entries(GRAMMAR_FILES).map(async ([id, file]) => [id as GrammarId, await Language.load(fileURLToPath(file))] as const),
   );
   const languages = new Map(entries);
   const parsers = new Map<GrammarId, Parser>();

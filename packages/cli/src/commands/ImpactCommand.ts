@@ -35,7 +35,7 @@ export class ImpactCommand extends Command {
   static override paths = [['impact']];
 
   static override usage = Command.Usage({
-    description: 'Compute the blast radius of a git diff: impacted symbols, packages and tests.',
+    description: 'List the test files a git diff can reach, grouped by package.',
     examples: [
       ['Compare the current branch with main', '$0 impact --base origin/main'],
       ['Machine-readable output for CI', '$0 impact --base origin/main --format json'],
@@ -44,13 +44,13 @@ export class ImpactCommand extends Command {
 
   base = Option.String('--base', 'origin/main', { description: 'Base revision (the merge-base with HEAD is used)' });
   head = Option.String('--head', 'HEAD', { description: 'Head revision, or WORKTREE for uncommitted changes' });
-  format = Option.String('--format', 'text', { validator: t.isEnum(FORMATS), description: 'Output format (markdown: for PR comments)' });
-  explain = Option.String('--explain', '3', { validator: t.isNumber(), description: 'markdown: include depwave why for the top N tests (0 = none)' });
+  format = Option.String('--format', 'text', { validator: t.isEnum(FORMATS), description: 'text (default), json, or markdown for PR comments' });
+  explain = Option.String('--explain', '3', { validator: t.isNumber(), description: 'With markdown: why-paths for the top n tests (0 for none)' });
   cwd = Option.String('--cwd', { description: 'Repository to analyze (defaults to the current directory)' });
   cache = Option.Boolean('--cache', true, { description: 'Use the persistent cache in .depwave/ (--no-cache to bypass)' });
   granularity = Option.String('--granularity', 'symbol', {
     validator: t.isEnum(['symbol', 'file'] as const),
-    description: 'symbol (precise, default) or file (Phase 1 file-level analysis)',
+    description: 'symbol (default: follows functions and classes) or file (whole files, never selects fewer tests)',
   });
 
   async execute(): Promise<number> {

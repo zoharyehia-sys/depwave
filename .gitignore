@@ -10,3 +10,11 @@ coverage/
 test-results.json
 depwave-impact.json
 depwave-shadow.json
+
+# Written by packages/cli/bundle.mjs for the npm package
+/packages/cli/README.md
+/packages/cli/LICENSE
+/packages/cli/CHANGELOG.md
+/packages/cli/THIRD-PARTY-LICENSES.txt
+/packages/cli/grammars/
+*.tgz

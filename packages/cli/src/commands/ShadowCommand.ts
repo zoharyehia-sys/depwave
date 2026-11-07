@@ -25,11 +25,12 @@ export class ShadowCommand extends Command {
     ],
   });
 
-  results = Option.Array('--results', { required: true, description: 'Test results file (Vitest/Jest JSON or JUnit XML); repeatable' });
-  resultsRoot = Option.String('--results-root', { description: 'Directory relative paths in the results are relative to (default: the repository root)' });
+  // Checked in execute(), not by the parser: a missing required option makes clipanion report "Command not found".
+  results = Option.Array('--results', { description: 'Test results file (Vitest/Jest JSON or JUnit XML); repeatable' });
+  resultsRoot = Option.String('--results-root', { description: 'Where relative paths in the results start (default: the repository root)' });
   base = Option.String('--base', 'origin/main', { description: 'Base revision (the merge-base with HEAD is used)' });
   head = Option.String('--head', 'HEAD', { description: 'Head revision the tests ran on' });
-  format = Option.String('--format', 'text', { validator: t.isEnum(['text', 'json', 'markdown'] as const), description: 'Output format' });
+  format = Option.String('--format', 'text', { validator: t.isEnum(['text', 'json', 'markdown'] as const), description: 'text (default), json, or markdown for PR comments' });
   cwd = Option.String('--cwd', { description: 'Repository to analyze (defaults to the current directory)' });
   cache = Option.Boolean('--cache', true, { description: 'Use the persistent cache in .depwave/ (--no-cache to bypass)' });
   granularity = Option.String('--granularity', 'symbol', { validator: t.isEnum(['symbol', 'file'] as const), description: 'symbol (default) or file' });
@@ -38,12 +39,14 @@ export class ShadowCommand extends Command {
     let closeCache = (): void => {};
     try {
       const cwd = this.cwd ?? process.cwd();
+      const files = this.results ?? [];
+      if (files.length === 0) throw new Error('shadow needs --results <file>: the results of a full test run (Vitest/Jest JSON or JUnit XML)');
       // Read the results first: a wrong path should fail in milliseconds, not after a full analysis.
-      const raw = this.results.map((file) => parseTestResults(readFileSync(resolve(cwd, file), 'utf8'), file));
+      const raw = files.map((file) => parseTestResults(readResults(resolve(cwd, file), file), file));
       const repoRoot = await new GitService(cwd).root();
       const run = toShadowRun(raw, repoRoot, this.resultsRoot === undefined ? repoRoot : resolve(cwd, this.resultsRoot));
       if (run.outcomes.length === 0 && run.unattributedFailures === 0) {
-        throw new Error(`no test files found in ${this.results.join(', ')} (were the tests run from this repository?)`);
+        throw new Error(`no test files found in ${files.join(', ')} (were the tests run from this repository?)`);
       }
 
       const pipeline = await createPipeline(cwd, { cache: this.cache, granularity: this.granularity });
@@ -65,5 +68,17 @@ export class ShadowCommand extends Command {
     } finally {
       closeCache(); // also on errors: Windows keeps open SQLite files locked
     }
+  }
+}
+
+/** The results file, or an error that says which one and why, instead of Node's raw `ENOENT: … open '…'`. */
+function readResults(path: string, name: string): string {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') throw new Error(`${name}: file not found (looked for ${path})`);
+    if (code === 'EISDIR') throw new Error(`${name}: is a directory; pass the results file itself`);
+    throw error;
   }
 }

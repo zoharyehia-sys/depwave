@@ -14,6 +14,7 @@
     "test:watch": "vitest",
     "lint:deps": "depcruise packages --config .dependency-cruiser.cjs",
     "check": "pnpm typecheck && pnpm lint:deps && pnpm test && pnpm build",
+    "smoke:pack": "node scripts/release/smoke-packed.mjs",
     "changeset": "changeset"
   },
   "devDependencies": {

@@ -22,7 +22,7 @@ export class CyclesCommand extends Command {
   });
 
   rev = Option.String('--rev', 'HEAD', { description: 'Revision to check, or WORKTREE for uncommitted changes' });
-  format = Option.String('--format', 'text', { validator: t.isEnum(['text', 'json'] as const), description: 'Output format' });
+  format = Option.String('--format', 'text', { validator: t.isEnum(['text', 'json'] as const), description: 'text (default) or json' });
   includeTypeOnly = Option.Boolean('--include-type-only', false, { description: 'Count `import type` edges too' });
   cwd = Option.String('--cwd', { description: 'Repository to analyze (defaults to the current directory)' });
   cache = Option.Boolean('--cache', true, { description: 'Use the persistent cache in .depwave/ (--no-cache to bypass)' });
