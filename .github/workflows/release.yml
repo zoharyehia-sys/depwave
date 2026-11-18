@@ -48,9 +48,12 @@ jobs:
             exit 0
           fi
           npm install --global npm@11 # trusted publishing needs npm 11.5.1 or later
-          # pnpm packs (it rewrites workspace: versions); npm publishes (OIDC). Tag and access come from publishConfig.
+          # pnpm packs (it rewrites workspace: versions); npm publishes (OIDC). npm ignores publishConfig.tag, so the
+          # dist-tag is passed here: a pre-release that went to `latest` would become everyone's default install.
+          DIST_TAG=latest
+          if [[ "$VERSION" == *-* ]]; then DIST_TAG=alpha; fi
           (cd packages/cli && pnpm pack --pack-destination "$RUNNER_TEMP")
-          npm publish "$RUNNER_TEMP/depwave-$VERSION.tgz"
+          npm publish "$RUNNER_TEMP/depwave-$VERSION.tgz" --tag "$DIST_TAG"
 
       - name: Create the GitHub release
         env:
