@@ -28,3 +28,4 @@ export * from './impact/ImpactPredictor.js';
 export * from './impact/TestSelector.js';
 export * from './impact/Explain.js';
 export * from './impact/Shadow.js';
+export * from './impact/ShadowHistory.js';

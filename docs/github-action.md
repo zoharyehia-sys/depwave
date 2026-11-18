@@ -138,6 +138,7 @@ a week.
 | `report` | Path to the full JSON report |
 | `shadow-verdict` | With `test-results`: `sound`, `missed` or `inconclusive` |
 | `shadow-missed` | With `test-results`: failing test files depwave didn't select |
+| `shadow-report` | With `test-results`: path to the shadow JSON, for [`depwave shadow history`](#adding-up-shadow-runs) |
 
 Outputs are empty when the analysis failed. Check `steps.<id>.outcome` first, as the example does.
 
@@ -156,6 +157,36 @@ the PR comment, and when a failing test was missed the job fails, after the comm
 ```
 
 What the verdicts mean, and what they don't prove: [shadow mode](../README.md#shadow-mode).
+
+### Adding up shadow runs
+
+One run proves little. Keep each run's result as an artifact, and `depwave shadow history` adds them up into observed
+recall and how much evidence it rests on:
+
+```yaml
+      - uses: zoharyehia-sys/depwave@4598168e2b3a91cb6386bc9e982d04fac702d7e3
+        id: depwave
+        if: ${{ !cancelled() }}
+        with:
+          test-results: test-results.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && steps.depwave.outputs.shadow-report != '' }}
+        with:
+          name: depwave-shadow-${{ github.job }}-${{ strategy.job-index }} # unique per matrix leg
+          path: ${{ steps.depwave.outputs.shadow-report }}
+          retention-days: 90
+```
+
+Then download them and add them up. With the GitHub CLI, for the last 100 runs of a workflow:
+
+```bash
+for id in $(gh run list --workflow ci.yml --limit 100 --json databaseId --jq '.[].databaseId'); do
+  gh run download "$id" --pattern 'depwave-shadow-*' --dir "shadow-runs/$id" || true # runs without one fail here
+done
+depwave shadow history --input shadow-runs
+```
+
+Artifacts expire (90 days at most on GitHub), so download them regularly if you want a longer record.
 
 ## Other CI systems
 

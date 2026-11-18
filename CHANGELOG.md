@@ -3,6 +3,16 @@
 depwave follows [Semantic Versioning](https://semver.org). Until 1.0, a minor version can change selection rules, the
 CLI and the JSON output.
 
+## Unreleased
+
+- **`depwave shadow history`:** adds up the shadow results CI saved. It reports observed recall over the runs where
+  depwave chose a subset, the recall that evidence proves (an exact one-sided Clopper-Pearson bound, 95% confidence by
+  default), how many more failures, none missed, it takes to prove a target (99.9% by default), average savings, and
+  every miss with its base and head. The same commit tested on several OSes counts as one run, and empty result files
+  from runs where `depwave shadow` failed are named, not counted.
+- **GitHub Action:** a `shadow-report` output, the path of the shadow result, so a workflow can upload it for
+  `shadow history`.
+
 ## 0.1.0-alpha.0 (2026-11-18)
 
 The first npm release. It's an alpha: run it in

@@ -62,6 +62,9 @@ outputs:
   shadow-missed:
     description: 'With `test-results`: failing test files depwave did not select, space-separated.'
     value: ${{ steps.analyze.outputs.shadow-missed }}
+  shadow-report:
+    description: 'With `test-results`: path to the shadow JSON. Upload it as an artifact to add runs up with `depwave shadow history`.'
+    value: ${{ steps.analyze.outputs.shadow-report }}
 
 runs:
   using: composite
@@ -130,6 +133,7 @@ runs:
             console.log(`shadow-verdict=${shadow.verdict}`);
             console.log(`shadow-missed=${shadow.missed.join(" ")}`);
           ' "$SHADOW_JSON" >> "$GITHUB_OUTPUT"
+          echo "shadow-report=$SHADOW_JSON" >> "$GITHUB_OUTPUT"
         fi
         FULL_RUN=false
         if [ -z "$INPUT_BASE" ] && [ -z "$BASE_REF" ]; then

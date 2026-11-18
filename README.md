@@ -91,6 +91,7 @@ its cache in `.depwave/`, which contains its own `.gitignore`.
 | `depwave impact` | Lists the test files a diff can reach, grouped by package. `--format json` for scripts, `markdown` for PR comments |
 | `depwave why <file>` | Shows the chain from a change to a test, or says why the test isn't impacted |
 | `depwave shadow --results <file>` | Checks a full test run's failures against what depwave would have selected |
+| `depwave shadow history --input <dir>` | Adds up saved shadow runs: observed recall, the recall that evidence proves, and every miss |
 | `depwave cycles` | Lists import cycles, and exits with 4 when there are any, so CI can use it as a lint |
 | `depwave graph` | Draws workspace packages, or the files of one package, as Mermaid or Graphviz |
 | `depwave cache stats`, `depwave cache clear` | Inspect or empty the analysis cache in `.depwave/` |
@@ -252,8 +253,11 @@ depwave shadow 2f61664a3bd4...d0d3fed2d141: 1 failing test file NOT selected ✘
 1. **Observe.** Add depwave to your existing full test job with
    [`test-results`](docs/github-action.md#shadow-mode). Nothing about what runs changes.
 2. **Investigate every `missed`** with `depwave why`. A dependency depwave didn't see is a bug worth reporting.
-3. **Switch pull requests to selective runs** only after a stretch of builds with real failures, all of them selected.
-4. **Keep a full run** after merge to `main`, or nightly, to catch whatever a selective run skips.
+3. **Add up the runs** with [`depwave shadow history`](docs/github-action.md#adding-up-shadow-runs). It reports observed
+   recall, the recall that evidence proves at 95% confidence, and how many more failures it takes to prove 99.9%. Only
+   runs where depwave chose a subset count: when everything was selected, nothing could be missed.
+4. **Switch pull requests to selective runs** only after a stretch of builds with real failures, all of them selected.
+5. **Keep a full run** after merge to `main`, or nightly, to catch whatever a selective run skips.
 
 ## Results on real repositories
 
