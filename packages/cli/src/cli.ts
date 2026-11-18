@@ -4,6 +4,7 @@ import { CyclesCommand } from './commands/CyclesCommand.js';
 import { GraphCommand } from './commands/GraphCommand.js';
 import { ImpactCommand } from './commands/ImpactCommand.js';
 import { ShadowCommand } from './commands/ShadowCommand.js';
+import { ShadowHistoryCommand } from './commands/ShadowHistoryCommand.js';
 import { WhyCommand } from './commands/WhyCommand.js';
 import { CacheHelpCommand, DepwaveCli, HelpCommand } from './help.js';
 import { VERSION } from './version.js';
@@ -23,6 +24,7 @@ export function createCli(): Cli {
   cli.register(ImpactCommand);
   cli.register(WhyCommand);
   cli.register(ShadowCommand);
+  cli.register(ShadowHistoryCommand);
   cli.register(CyclesCommand);
   cli.register(GraphCommand);
   cli.register(CacheHelpCommand);

@@ -14,6 +14,9 @@ const VALUE_NAMES: Record<string, string> = {
   '--results': '<file>',
   '--results-root': '<dir>',
   '--package': '<name>',
+  '--input': '<path>',
+  '--target': '<p>',
+  '--confidence': '<p>',
 };
 
 // `  --base <rev>     Description`, with the name in bold when colors are on: `\x1b[1m--base <rev>   \x1b[22m    …`.
@@ -58,6 +61,7 @@ Test selection
   impact          List the test files a diff impacts, grouped by package
   why <file>      Show the dependency chain from a change to a file, or why it isn't impacted
   shadow          Check a full test run's failures against what depwave would have selected
+  shadow history  Add up saved shadow runs: recall, the evidence behind it, and every miss
 
 Understanding the repository
   cycles          List import cycles

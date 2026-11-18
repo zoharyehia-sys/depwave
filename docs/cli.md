@@ -10,6 +10,7 @@ Every command, option and exit code of the `depwave` CLI, plus configuration and
 | `depwave impact` | Lists the test files a diff impacts, grouped by package |
 | `depwave why <file>` | Shows the shortest dependency chain from a change to `<file>`, or says it isn't impacted |
 | `depwave shadow --results <file>` | Checks a full test run's failures against what depwave would have selected ([shadow mode](../README.md#shadow-mode)) |
+| `depwave shadow history --input <dir>` | Adds up saved shadow results: observed recall, the recall it proves at a confidence level, how many more failures that needs, savings, and every miss ([details](github-action.md#adding-up-shadow-runs)) |
 | `depwave cycles` | Lists import cycles: groups of files that import each other, each shown as its shortest loop |
 | `depwave graph` | Draws workspace packages, or the files of one package, as a Mermaid or Graphviz diagram |
 | `depwave cache stats` | Shows what the cache holds, and its size |
@@ -28,6 +29,9 @@ Every command, option and exit code of the `depwave` CLI, plus configuration and
 | `--explain <n>` | `3` | `impact` | With `--format markdown`, includes `depwave why` paths for the top `n` tests (`0` for none) |
 | `--results <file>` | required | `shadow` | Vitest/Jest JSON or JUnit XML, detected from the content. Repeatable |
 | `--results-root <dir>` | repository root | `shadow` | Directory that relative paths in the results are resolved from |
+| `--input <path>` | required | `shadow history` | A `depwave shadow --format json` file, or a directory searched recursively. Other JSON files are skipped, and an empty file (a run where `depwave shadow` failed) is reported. Repeatable |
+| `--target <p>` | `0.999` | `shadow history` | The recall to show before skipping tests |
+| `--confidence <p>` | `0.95` | `shadow history` | Confidence of the recall bound |
 | `--rev <rev>` | `HEAD` | `cycles`, `graph` | Revision to inspect. `WORKTREE` includes uncommitted and untracked changes |
 | `--include-type-only` | off | `cycles` | Count `import type` edges too. They're erased at runtime, so they can't cause load-order bugs |
 | `--level <l>` | `package` | `graph` | `package`: declared workspace dependencies. `file`: imports between files |

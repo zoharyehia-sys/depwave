@@ -62,7 +62,9 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then BASE="origin/${{ github.base_ref }}"; else BASE="HEAD~1"; fi
           SHADOW=(node packages/cli/dist/bin.js shadow --base "$BASE" --head HEAD --results test-results.json)
-          "${SHADOW[@]}" --format json > depwave-shadow.json || true
+          # Through a temporary file: a redirect creates depwave-shadow.json even when the command fails, and an empty
+          # file is a run with no result. Exit 3 (a miss) still writes a complete result.
+          if "${SHADOW[@]}" --format json > depwave-shadow.json.tmp || [ $? -eq 3 ]; then mv depwave-shadow.json.tmp depwave-shadow.json; fi
           "${SHADOW[@]}" --format markdown >> "$GITHUB_STEP_SUMMARY" || true
           "${SHADOW[@]}" # the step's verdict (served from the cache the first run filled)
       - uses: actions/upload-artifact@v4
