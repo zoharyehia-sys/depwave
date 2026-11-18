@@ -34,8 +34,7 @@
     "THIRD-PARTY-LICENSES.txt"
   ],
   "publishConfig": {
-    "access": "public",
-    "tag": "alpha"
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -b",

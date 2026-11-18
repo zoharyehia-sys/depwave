@@ -19,8 +19,8 @@ provenance, and creates the GitHub release from the version's [changelog](../CHA
    ```
 
 The workflow stops before publishing if the tag and the package version differ, the changelog has no section for
-the version, or any check fails. Pre-releases go to npm's `alpha` dist-tag (`publishConfig.tag`) and are marked as
-pre-releases on GitHub.
+the version, or any check fails. Pre-releases go to npm's `alpha` dist-tag (the workflow passes `--tag alpha`) and
+are marked as pre-releases on GitHub.
 
 ## The first release
 
@@ -36,16 +36,17 @@ npm sets up trusted publishing from an existing package's settings, so `0.1.0-al
    ```
 
 2. Publish from `packages/cli`, after checking the dry run's name, version and tag (`depwave`, `0.1.0-alpha.0`,
-   `alpha`). npm asks you to confirm with your security key in the browser:
+   `with tag alpha`). Pass `--tag alpha` every time: npm ignores `publishConfig.tag`, and without it the alpha
+   becomes the default install. npm asks you to confirm with your security key in the browser:
 
    ```bash
    cd packages/cli
-   corepack pnpm publish --dry-run
-   corepack pnpm publish
+   corepack pnpm publish --tag alpha --dry-run
+   corepack pnpm publish --tag alpha
    ```
 
    If the publish fails with an OTP or two-factor error, pack with pnpm and publish the tarball with npm instead:
-   `corepack pnpm pack`, then `npm publish depwave-0.1.0-alpha.0.tgz`.
+   `corepack pnpm pack`, then `npm publish depwave-0.1.0-alpha.0.tgz --tag alpha`.
 
 3. On npmjs.com, open the package's **Settings**, add a **trusted publisher**: GitHub Actions, repository
    `zoharyehia-sys/depwave`, workflow `release.yml`. Every later release is published by the workflow, without a
